@@ -4,7 +4,7 @@ main = "index.ts"
 compatibility_date = "2026-10-01"
 
 [vars]
-# Which site may read the Worker's responses. "*" lets any site use it; once
-# the static site has an address, put that here instead, with no trailing
-# slash, e.g. "https://your-username.github.io".
-ALLOWED_ORIGIN = "*"
+# Which site may read the Worker's responses: the static site on GitHub
+# Pages. An origin is scheme and host only, with no path or trailing slash.
+# Use "*" to let any site (or a local preview) use it.
+ALLOWED_ORIGIN = "https://finay.github.io"

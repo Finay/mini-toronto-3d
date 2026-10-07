@@ -2,7 +2,7 @@
 
 A small Cloudflare Worker for running Mini Toronto as a static site. The TTC's live vehicle feed sends no CORS header, so a browser on another site (GitHub Pages, say) cannot read it. This Worker fetches the feed, decodes it, and serves it as JSON with that header.
 
-It is not used by `npm run dev` or `npm start`; the project's own server does this job there. Nothing in the client points at it yet.
+It is deployed at https://mini-toronto-ttc.kian-benner.workers.dev/vehicles and used by the static site at https://finay.github.io/mini-toronto-3d/. It is not used by `npm run dev` or `npm start`; the project's own server does this job there.
 
 ## What it serves
 
@@ -22,6 +22,6 @@ Deploying needs a Cloudflare account (the free plan is enough) and a one-time `n
 
 ## Before relying on it
 
-- Set `ALLOWED_ORIGIN` in `wrangler.toml` to the static site's address, so that other sites cannot use the Worker.
+- `ALLOWED_ORIGIN` in `wrangler.toml` is set to the static site's origin (`https://finay.github.io`), so other sites cannot use the Worker. That includes `npm run preview:static` on localhost: live TTC vehicles will not load there unless the Worker is redeployed with `"*"`.
 - The free plan allows a limited number of requests a day (100,000 when this was written; check the current figure), counted even when the answer comes from cache. One open tab polling every 15 seconds makes about 5,800.
 - The TTC feed's terms of use have not been confirmed.

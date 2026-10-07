@@ -88,6 +88,7 @@ Themes: `src/themes.ts` holds every colour that differs between light and dark m
 - Timetable-placed vehicles are computed in the browser by the same `ScheduleSimulator` the server uses, which is why it lives in `shared/schedule.ts`
 - Live TTC vehicles come from the Cloudflare Worker in `worker/` (deployed at `https://mini-toronto-ttc.kian-benner.workers.dev/vehicles`; override with `TTC_FEED_URL` at build time). They arrive without `shapeId`, so vehicles follow the nearest path of their route
 - A live source with no proxy, or a camera list that cannot be fetched at build time, is left out of the static site with a warning
+- Deployed at https://finay.github.io/mini-toronto-3d/ from https://github.com/Finay/mini-toronto-3d. The Worker only answers that origin (`ALLOWED_ORIGIN` in `worker/wrangler.toml`), so live TTC vehicles do not load in a local `preview:static`
 - `.github/workflows/pages.yml` rebuilds and deploys on push to `main` and weekly; the camera list and timetables are only as fresh as the last build
 
 Anything added to the server's API needs a counterpart in `DataApi`, `staticApi.ts` and `build-static-data.ts`, or it will not exist in the static site.
