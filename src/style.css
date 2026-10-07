@@ -1,76 +1,812 @@
+:root {
+  --page: #45516e;
+  --text: #e8eaed;
+  --text-muted: #9aa0a6;
+  --text-soft: #bdc1c6;
+  --panel: rgb(22 27 41 / 0.94);
+  --border: rgb(255 255 255 / 0.1);
+  --warning: #f2b84b;
+  --popup: #161b29;
+}
+
+:root[data-theme='light'] {
+  --page: #f2f3f0;
+  --text: #1f2430;
+  --text-muted: #5f6673;
+  --text-soft: #444b57;
+  --panel: rgb(255 255 255 / 0.95);
+  --border: rgb(0 0 0 / 0.14);
+  --warning: #a35f00;
+  --popup: #ffffff;
+}
+
 html,
 body {
   margin: 0;
   height: 100%;
-  background: #0c0e12;
+  background: var(--page);
   font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
-  color: #e8eaed;
+  color: var(--text);
 }
 
 #map {
   position: absolute;
   inset: 0;
+  /* Keeps the map's own layers, including the vehicle overlay, beneath the menu. */
+  z-index: 0;
 }
 
-#panel {
+/* Classes that set `display` would otherwise override the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/*
+ * The menu: a "vibrant block" look. Flat colour blocks, thick outlines and
+ * hard offset shadows, with a heavy display face for labels. The colours are
+ * the map's own: the two neutrals are its land and its dark slate (swapping
+ * between themes, as the basemaps do), and the five accents are named for
+ * what they are taken from. Text on an accent is always the dark slate,
+ * which every one of them supports at 4.5:1 or better.
+ */
+.flyout {
+  --paper: #f5f6f2;
+  --ink: #1b2233;
+  --on-color: #1b2233;
+  --hard-shadow: #1b2233;
+  --quiet: #4b556b;
+  --alert: #b3261e;
+  /* Subway yellow, parks, streetcar red, the lake, and buildings. */
+  --sand: #e3c34f;
+  --park: #7cc596;
+  --coral: #f07a6e;
+  --water: #6bb6e6;
+  --slate: #9aa6cf;
+  /* The "hidden" sign on a switch; a red that shows on both paper and ink. */
+  --prohibited: #e5484d;
+  --line: 3px solid var(--ink);
+  --display: 'Russo One', 'Arial Black', Impact, sans-serif;
+  /* The coloured bars down the menu's outer edge, which the pull tab clears. */
+  --spine: 16px;
+
   position: absolute;
-  top: 12px;
-  left: 12px;
-  max-width: min(300px, calc(100vw - 80px));
-  padding: 12px 14px;
-  border: 1px solid rgb(255 255 255 / 0.1);
-  border-radius: 8px;
-  background: rgb(18 20 26 / 0.86);
-  backdrop-filter: blur(6px);
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(380px, calc(100vw - 88px));
+  color: var(--ink);
+  font-size: 14px;
+  transform: translateX(-100%);
+  transition: transform 260ms cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 
-#panel h1 {
-  margin: 0 0 8px;
+:root:not([data-theme='light']) .flyout {
+  /* A darker shade of the dark basemap's land, outlined in its building highlight. */
+  --paper: #232b40;
+  --ink: #e6ecfa;
+  --hard-shadow: #3d7fb5;
+  --quiet: #b9c2d8;
+  --alert: #e3c34f;
+}
+
+.flyout.open {
+  transform: none;
+}
+
+.flyout-content {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 100%;
+  border-right: var(--line);
+  background: var(--paper);
+  /* Stays visible at the screen edge while the menu is closed. */
+  box-shadow:
+    8px 0 0 var(--coral),
+    var(--spine) 0 0 var(--water);
+}
+
+/* A moving hazard stripe across the top. */
+.flyout-content::before {
+  content: '';
+  flex: none;
+  height: 14px;
+  border-bottom: var(--line);
+  background: repeating-linear-gradient(-45deg, var(--sand) 0 12px, var(--on-color) 12px 24px);
+  background-size: 34px 100%;
+  animation: stripe-march 1.6s linear infinite;
+}
+
+@keyframes stripe-march {
+  to {
+    background-position: 34px 0;
+  }
+}
+
+.flyout :focus-visible {
+  outline: 3px solid var(--slate);
+  outline-offset: 2px;
+}
+
+/* A fat block hanging off the menu's spine, halfway down the screen. */
+.pull-tab {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + var(--spine));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 48px;
+  height: 136px;
+  margin-top: -68px;
+  padding: 0;
+  border: var(--line);
+  border-left: 0;
+  background: var(--sand);
+  box-shadow: 6px 6px 0 var(--hard-shadow);
+  color: var(--on-color);
+  font-family: var(--display);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    width 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.pull-tab:hover {
+  /* Grows outward from the spine rather than moving, so it never comes away from it. */
+  width: 58px;
+  background: var(--coral);
+}
+
+.pull-tab:active {
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+}
+
+.flyout.open .pull-tab {
+  background: var(--park);
+}
+
+.flyout.open .pull-tab:hover {
+  background: var(--water);
+}
+
+/* Reads upwards, like the spine of a book. */
+.pull-tab-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
   font-size: 15px;
-  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
-#panel label {
+/* Points the way the menu will move. */
+.pull-tab-arrow {
+  font-size: 26px;
+  line-height: 0.6;
+  transition: transform 260ms ease;
+}
+
+.flyout.open .pull-tab-arrow {
+  transform: rotate(180deg);
+}
+
+/* Tabs: three blocks, each its own colour, the chosen one lifted off the page. */
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 16px 16px 14px;
+  border-bottom: var(--line);
+}
+
+.tab {
+  --tab: var(--sand);
+  flex: 1;
+  min-height: 44px;
+  padding: 0 6px;
+  border: var(--line);
+  background: var(--paper);
+  box-shadow: inset 0 -7px 0 var(--tab);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+/* "Appearance" is half as long again as the other two labels. */
+.tab:first-child {
+  flex: 1.4;
+}
+
+.tab:nth-child(2) {
+  --tab: var(--water);
+}
+
+.tab:nth-child(3) {
+  --tab: var(--coral);
+}
+
+.tab:hover,
+.tab[aria-selected='true'] {
+  background: var(--tab);
+  color: var(--on-color);
+}
+
+.tab[aria-selected='true'] {
+  transform: translate(-3px, -3px);
+  box-shadow: 5px 5px 0 var(--hard-shadow);
+}
+
+.flyout-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.tab-panel {
+  padding: 18px 22px 28px 16px;
+}
+
+.tab-panel p {
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.tab-panel a {
+  padding: 0 3px;
+  background: var(--sand);
+  color: var(--on-color);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.tab-panel a:hover {
+  background: var(--coral);
+}
+
+.flyout h2 {
+  display: inline-block;
+  margin: 14px 0 10px;
+  padding: 3px 9px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transform: rotate(-1.5deg);
+}
+
+/* Checkboxes: a square block that fills with colour and a tick. */
+.check {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  min-height: 36px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-#panel input {
+.check input {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   margin: 0;
+  border: var(--line);
+  border-radius: 0;
+  background: var(--paper);
+  appearance: none;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.flyout .check input:checked {
+  background: var(--park);
+}
+
+/* The tick: two sides of a small box, turned. */
+.check input:checked::after {
+  content: '';
+  width: 5px;
+  height: 11px;
+  margin-top: -3px;
+  border: solid var(--on-color);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+
+.check:hover input {
+  box-shadow: 3px 3px 0 var(--hard-shadow);
+}
+
+/* In Appearance, each toggle is a card of its own. */
+.tab-panel > .check {
+  padding: 10px 12px;
+  border: var(--line);
+  background: var(--paper);
+  box-shadow: 6px 6px 0 var(--hard-shadow);
+  font-family: var(--display);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Data sections: outlined cards with a coloured header band. */
+.section {
+  --band: var(--sand);
+  margin-bottom: 20px;
+  border: var(--line);
+  background: var(--paper);
+  box-shadow: 6px 6px 0 var(--hard-shadow);
+}
+
+.section:nth-child(3n + 2) {
+  --band: var(--water);
+}
+
+.section:nth-child(3n) {
+  --band: var(--coral);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 0;
+  background: var(--band);
+  color: var(--on-color);
+}
+
+.section-header .check {
+  min-height: 0;
+}
+
+.section-header .check input {
+  border-color: var(--on-color);
+  background: #fffdf5;
+}
+
+.section-header .check:hover input {
+  box-shadow: 3px 3px 0 var(--on-color);
+}
+
+.section-name {
+  min-height: 46px;
+  padding: 0 12px;
+  color: var(--on-color);
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.section-name .chevron {
+  margin-left: 0;
+}
+
+.section-body {
+  padding: 12px;
+  border-top: var(--line);
+}
+
+/* A sticker slapped on at an angle. */
+.badge {
+  flex: none;
+  padding: 3px 7px;
+  border: 2px solid var(--on-color);
+  background: var(--slate);
+  color: var(--on-color);
+  font-family: var(--display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: rotate(-5deg);
 }
 
 .source {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
+  padding-left: 9px;
+  border-left: 6px solid var(--water);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.source:nth-of-type(even) {
+  border-left-color: var(--coral);
+}
+
+.source-name {
+  font-weight: 700;
+}
+
+.source-name::after {
+  content: ': ';
 }
 
 .status {
-  margin: 2px 0 0 19px;
-  color: #9aa0a6;
-  font-size: 12px;
+  color: var(--quiet);
 }
 
 .status.warning {
-  color: #f2b84b;
+  color: var(--alert);
+  font-weight: 700;
 }
 
-.legend {
+.note {
+  color: var(--quiet);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.line-filter {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: var(--line);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+  appearance: none;
+  transition: box-shadow 140ms ease;
+}
+
+.line-filter::placeholder {
+  color: var(--quiet);
+  font-weight: 400;
+}
+
+.line-filter:focus {
+  box-shadow: 5px 5px 0 var(--coral);
+}
+
+.line-actions {
   display: flex;
-  gap: 14px;
-  margin-bottom: 8px;
-  color: #bdc1c6;
-  text-transform: capitalize;
+  gap: 10px;
+  margin: 12px 0 6px;
 }
 
-.legend-item {
-  display: inline-flex;
+/* Chunky buttons that sink into the page when pressed. */
+.text-button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: var(--line);
+  background: var(--park);
+  box-shadow: 4px 4px 0 var(--hard-shadow);
+  color: var(--on-color);
+  font-family: var(--display);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.text-button + .text-button {
+  background: var(--coral);
+}
+
+.text-button:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--hard-shadow);
+}
+
+.text-button:active {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+
+.line-list {
+  max-height: 46vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 4px 8px 4px 0;
+}
+
+.line {
+  /* The outline of the row's switch, which must show against the row. */
+  --ring: var(--ink);
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  padding: 5px 8px;
+  font-weight: 600;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
-.swatch {
-  width: 9px;
-  height: 9px;
+.line:hover,
+.line:focus-within {
+  --ring: var(--on-color);
+  background-color: var(--sand);
+  box-shadow: inset 6px 0 0 var(--on-color);
+  color: var(--on-color);
+}
+
+/* A kind of line (Subway, Bus…): an inverted bar with a switch for all its lines. */
+.line.line-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background-color: var(--ink);
+  color: var(--paper);
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  --ring: var(--paper);
+}
+
+.line.line-heading:hover,
+.line.line-heading:focus-within {
+  --ring: var(--on-color);
+  background-color: var(--slate);
+  box-shadow: none;
+  color: var(--on-color);
+}
+
+/* The heading's name, count and arrow: one button that opens its dropdown. */
+.expander {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.line-heading .expander {
+  min-height: 28px;
+  padding: 0;
+}
+
+.count {
+  padding: 1px 6px;
+  border: 2px solid var(--on-color);
+  background: var(--sand);
+  color: var(--on-color);
+  font-size: 11px;
+}
+
+.chevron {
+  margin-left: auto;
+  padding: 0 4px;
+  font-size: 22px;
+  line-height: 0.7;
+  transition: transform 160ms ease;
+}
+
+.expander[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+
+.line-group {
+  padding: 4px 0 4px 6px;
+}
+
+/*
+ * The line's colour doubles as its on/off switch. Shown: a solid, outlined
+ * disc. Hidden: the disc fades and a prohibition sign is drawn over it.
+ */
+.dot {
+  position: relative;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.dot::before,
+.dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+}
+
+.dot::before {
+  background: var(--dot);
+  transition: opacity 120ms ease;
+}
+
+.dot[aria-checked='false']::before {
+  opacity: 0.25;
+}
+
+.dot[aria-checked='mixed']::before {
+  opacity: 0.6;
+}
+
+/* Shown: an outline. Hidden: a red ring with a bar from top left to bottom right. */
+.dot::after {
+  border: 2.5px solid var(--ring, var(--ink));
+}
+
+.dot[aria-checked='false']::after {
+  border-color: var(--prohibited);
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 1.5px),
+    var(--prohibited) calc(50% - 1.5px),
+    var(--prohibited) calc(50% + 1.5px),
+    transparent calc(50% + 1.5px)
+  );
+}
+
+.dot:hover {
+  transform: scale(1.18);
+}
+
+.dot:active {
+  transform: scale(0.9);
+}
+
+.credits {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.credits li {
+  margin-bottom: 8px;
+  padding-left: 20px;
+  line-height: 1.45;
+  /* A square bullet. */
+  background: linear-gradient(var(--coral), var(--coral)) 0 0.35em / 10px 10px no-repeat;
+}
+
+.credits li:nth-child(3n + 2) {
+  background-image: linear-gradient(var(--water), var(--water));
+}
+
+.credits li:nth-child(3n) {
+  background-image: linear-gradient(var(--park), var(--park));
+}
+
+.tab-panel > .note {
+  padding: 10px 12px;
+  border: 2px dashed var(--ink);
+}
+
+.notice {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  left: 84px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--warning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flyout,
+  .flyout *,
+  .flyout *::before {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Pinned by script to the hovered object's position on screen. */
+.popup-anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Sits above its anchor and grows out of it; `.below` flips it underneath. */
+.popup {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--popup);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  font-size: 12px;
+  opacity: 0;
+  transform: translateX(-50%) scale(0.2);
+  transform-origin: 50% calc(100% + 14px);
+  transition:
+    opacity 120ms ease-in,
+    transform 150ms ease-in;
+}
+
+.popup.visible {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+  transition:
+    opacity 140ms ease-out,
+    transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+
+.popup.instant {
+  transition: none;
+}
+
+.below .popup {
+  top: 0;
+  bottom: auto;
+  transform-origin: 50% -14px;
+}
+
+.popup-title {
+  font-weight: 600;
+}
+
+/* A small pointer on the edge facing the object. */
+.popup::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border: solid var(--border);
+  border-width: 0 1px 1px 0;
+  background: var(--popup);
+  transform: rotate(45deg);
+}
+
+.below .popup::after {
+  top: -5px;
+  bottom: auto;
+  border-width: 1px 0 0 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popup,
+  .popup.visible {
+    transition: none;
+  }
 }

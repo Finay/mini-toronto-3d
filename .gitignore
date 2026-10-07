@@ -2,8 +2,9 @@
 node_modules/
 dist/
 
-# Raw downloaded datasets (large; re-fetchable)
+# Downloaded datasets and files generated from them by `npm run data`
 data/raw/
+data/processed/
 
 # Secrets
 .env

@@ -64,6 +64,21 @@ export function decodeVehiclePositions(
   return vehicles;
 }
 
+/** Maps trip ids from a static GTFS feed to the shape each trip follows. */
+export interface TripShapes {
+  shapeIds: string[];
+  /** Trip id to an index into `shapeIds`. */
+  trips: Record<string, number>;
+}
+
+/** Fills in `shapeId` for vehicles whose trip is in the static feed. */
+export function withShapes(vehicles: Vehicle[], tripShapes: TripShapes): Vehicle[] {
+  return vehicles.map((vehicle) => {
+    const index = vehicle.tripId === undefined ? undefined : tripShapes.trips[vehicle.tripId];
+    return index === undefined ? vehicle : { ...vehicle, shapeId: tripShapes.shapeIds[index] };
+  });
+}
+
 export async function fetchVehiclePositions(options: GtfsRealtimeOptions): Promise<Vehicle[]> {
   const response = await fetch(options.url, {
     headers: { 'User-Agent': USER_AGENT, ...options.headers },
