@@ -55,7 +55,10 @@ input {
  * what they are taken from. Text on an accent is always the dark slate,
  * which every one of them supports at 4.5:1 or better.
  */
-.flyout {
+/* Shared by the menu, the map's popups and its zoom and compass buttons. */
+.flyout,
+.popup-anchor,
+.maplibregl-ctrl-group {
   --paper: #f5f6f2;
   --ink: #1b2233;
   --on-color: #1b2233;
@@ -74,7 +77,9 @@ input {
   --display: 'Russo One', 'Arial Black', Impact, sans-serif;
   /* The coloured bars down the menu's outer edge, which the pull tab clears. */
   --spine: 16px;
+}
 
+.flyout {
   position: absolute;
   z-index: 2;
   top: 0;
@@ -87,7 +92,9 @@ input {
   transition: transform 260ms cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 
-:root:not([data-theme='light']) .flyout {
+:root:not([data-theme='light']) .flyout,
+:root:not([data-theme='light']) .popup-anchor,
+:root:not([data-theme='light']) .maplibregl-ctrl-group {
   /* A darker shade of the dark basemap's land, outlined in its building highlight. */
   --paper: #232b40;
   --ink: #e6ecfa;
@@ -122,6 +129,10 @@ input {
   background: repeating-linear-gradient(-45deg, var(--sand) 0 12px, var(--on-color) 12px 24px);
   background-size: 34px 100%;
   animation: stripe-march 1.6s linear infinite;
+}
+
+:root[data-paused] .flyout-content::before {
+  animation-play-state: paused;
 }
 
 @keyframes stripe-march {
@@ -350,6 +361,116 @@ input {
   font-weight: 400;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* Under the toggle card in Appearance. While pausing, it shows as pressed in. */
+.pause-button {
+  display: block;
+  min-width: 120px;
+  min-height: 44px;
+  margin: 22px 0 10px;
+  background: var(--sand);
+  font-size: 13px;
+}
+
+.pause-button[aria-pressed='true'] {
+  background: var(--coral);
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+
+/*
+ * The logo at the top of About: "Mini" as a tilted label, "Toronto" as the
+ * main block, and "3D" as a sticker with a stepped shadow that gives it depth.
+ */
+.logo {
+  display: inline-grid;
+  justify-items: start;
+  margin: 6px 0 26px;
+  font-family: var(--display);
+  font-weight: 400;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.logo span {
+  border: var(--line);
+  color: var(--on-color);
+}
+
+.logo-mini {
+  z-index: 1;
+  margin: 0 0 -8px 10px;
+  padding: 5px 10px 4px;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 18px;
+  letter-spacing: 0.14em;
+  transform: rotate(-4deg);
+}
+
+.logo span.logo-mini {
+  color: var(--paper);
+}
+
+.logo-toronto {
+  padding: 12px 14px 8px;
+  background: var(--sand);
+  box-shadow: 7px 7px 0 var(--hard-shadow);
+  font-size: clamp(30px, 11vw, 46px);
+  letter-spacing: 0.02em;
+}
+
+.logo-3d {
+  justify-self: end;
+  margin: -12px -10px 0 0;
+  padding: 5px 10px 3px;
+  background: var(--coral);
+  box-shadow:
+    4px 4px 0 var(--water),
+    8px 8px 0 var(--park);
+  font-size: 30px;
+  transform: rotate(5deg);
+}
+
+/* A set of either-or choices, as one card. */
+.option-group {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px;
+  border: var(--line);
+  background: var(--paper);
+  box-shadow: 6px 6px 0 var(--hard-shadow);
+}
+
+/* Round, with a dot: one of these, not any number of them. */
+.option input {
+  border-radius: 50%;
+}
+
+.option input:checked::after {
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--on-color);
+  transform: none;
+}
+
+.option-name {
+  font-family: var(--display);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A note that is plain text, without the dashed box of a standalone one. */
+.tab-panel > .note.plain {
+  margin: -4px 0 10px;
+  padding: 0;
+  border: 0;
 }
 
 /* Data sections: outlined cards with a coloured header band. */
@@ -729,6 +850,65 @@ input {
   }
 }
 
+/*
+ * The map's own zoom and compass buttons, restyled as a stack of colour
+ * blocks. Their icons are dark, so each button keeps a light colour in both
+ * themes. The selectors are longer than MapLibre's own so as to win over them.
+ */
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group:not(:empty) {
+  margin: 14px 18px 0 0;
+  border: var(--line);
+  border-radius: 0;
+  background: var(--paper);
+  box-shadow: 5px 5px 0 var(--hard-shadow);
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button {
+  width: 42px;
+  height: 42px;
+  border-radius: 0;
+  background-color: var(--sand);
+  transition: background-color 140ms ease;
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button.maplibregl-ctrl-zoom-out {
+  background-color: var(--water);
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button.maplibregl-ctrl-compass {
+  background-color: var(--coral);
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button {
+  border-top: var(--line);
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button:not(:disabled):hover {
+  background-color: var(--park);
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button:not(:disabled):active {
+  background-color: var(--slate);
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button:focus {
+  /* MapLibre rounds the end buttons' corners again on focus. */
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button:focus-visible {
+  outline: 3px solid var(--slate);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maplibregl-ctrl-group button {
+    transition: none;
+  }
+}
+
 /* Pinned by script to the hovered object's position on screen. */
 .popup-anchor {
   position: absolute;
@@ -740,19 +920,24 @@ input {
   pointer-events: none;
 }
 
-/* Sits above its anchor and grows out of it; `.below` flips it underneath. */
+/*
+ * Sits above its anchor and grows out of it; `.below` flips it underneath.
+ * Drawn in the menu's block style: an outlined card with a hard shadow and a
+ * coloured title band.
+ */
 .popup {
   position: absolute;
   bottom: 0;
   left: 0;
   width: max-content;
-  max-width: 260px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--popup);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
-  font-size: 12px;
+  max-width: 280px;
+  border: var(--line);
+  background: var(--paper);
+  box-shadow: 5px 5px 0 var(--hard-shadow);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
   opacity: 0;
   transform: translateX(-50%) scale(0.2);
   transform-origin: 50% calc(100% + 14px);
@@ -779,29 +964,55 @@ input {
   transform-origin: 50% -14px;
 }
 
-.popup-title {
-  font-weight: 600;
+.popup > div {
+  padding: 2px 10px;
 }
 
-/* A small pointer on the edge facing the object. */
+.popup > div:last-child {
+  padding-bottom: 7px;
+}
+
+.popup > .popup-title {
+  margin-bottom: 5px;
+  padding: 6px 10px;
+  border-bottom: var(--line);
+  background: var(--sand);
+  color: var(--on-color);
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* A title with nothing under it needs no gap or rule beneath. */
+.popup > .popup-title:last-child {
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+
+/* A square pointer on the edge facing the object. */
 .popup::after {
   content: '';
   position: absolute;
-  bottom: -5px;
+  bottom: -8px;
   left: 50%;
-  width: 8px;
-  height: 8px;
-  margin-left: -4px;
-  border: solid var(--border);
-  border-width: 0 1px 1px 0;
-  background: var(--popup);
+  box-sizing: border-box;
+  width: 13px;
+  height: 13px;
+  margin-left: -6.5px;
+  border: solid var(--ink);
+  border-width: 0 3px 3px 0;
+  background: var(--paper);
   transform: rotate(45deg);
 }
 
+/* Underneath, the pointer comes out of the title band. */
 .below .popup::after {
-  top: -5px;
+  top: -8px;
   bottom: auto;
-  border-width: 1px 0 0 1px;
+  border-width: 3px 0 0 3px;
+  background: var(--sand);
 }
 
 @media (prefers-reduced-motion: reduce) {

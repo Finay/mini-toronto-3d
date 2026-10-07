@@ -29,6 +29,9 @@ function setup() {
     sources: [source('ttc', 'Buses and streetcars'), source('ttc-rapid-transit', 'Subway and light rail')],
     lightMode: false,
     onLightMode: vi.fn(),
+    onPaused: vi.fn(),
+    trackingMode: 'free',
+    onTrackingMode: vi.fn(),
     onGroupVisible: vi.fn(),
     onGroupRouteLines: vi.fn(),
     onGroupStops: vi.fn(),
@@ -115,14 +118,50 @@ describe('menu', () => {
   it('has no heading above the tabs', () => {
     setup();
 
-    expect($$('.flyout h1')).toEqual([]);
     expect($('.flyout-content').firstElementChild?.classList.contains('tabs')).toBe(true);
   });
 
-  it('leaves only the light mode toggle in Appearance', () => {
+  it('opens the About tab with the name as a logo heading', () => {
     setup();
+    const about = $$('.tab-panel')[2]!;
 
-    expect($$('.tab-panel')[0]!.textContent).toBe('Light mode');
+    expect(about.firstElementChild?.tagName).toBe('H1');
+    expect(about.querySelector('.logo')?.textContent).toBe('Mini Toronto 3D');
+  });
+
+  it('has the light mode toggle and a pause button in Appearance', () => {
+    setup();
+    const appearance = $$('.tab-panel')[0]!;
+
+    expect(appearance.querySelector('.check')?.textContent).toBe('Light mode');
+    expect(appearance.querySelector('.pause-button')?.textContent).toBe('Pause');
+  });
+
+  it('offers four ways to track a vehicle in Appearance, with the current one chosen', () => {
+    const { options } = setup();
+    const choices = $$<HTMLInputElement>('.tab-panel:first-child input[type="radio"]');
+
+    expect($$('.option-name').map((name) => name.textContent)).toEqual(['Free', 'Top-back', 'Top-front', 'Helicopter']);
+    expect(choices.map((choice) => choice.checked)).toEqual([true, false, false, false]);
+
+    choices[3]!.click();
+    expect(options.onTrackingMode).toHaveBeenLastCalledWith('helicopter');
+    expect(choices.map((choice) => choice.checked)).toEqual([false, false, false, true]);
+  });
+
+  it('pauses and resumes from one button, which says what it will do next', () => {
+    const { options } = setup();
+    const button = $<HTMLButtonElement>('.pause-button');
+
+    button.click();
+    expect(options.onPaused).toHaveBeenLastCalledWith(true);
+    expect(button.textContent).toBe('Resume');
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+
+    button.click();
+    expect(options.onPaused).toHaveBeenLastCalledWith(false);
+    expect(button.textContent).toBe('Pause');
+    expect(button.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('groups sources into a TTC section alongside the planned ones', () => {

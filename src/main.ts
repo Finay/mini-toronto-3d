@@ -17,7 +17,7 @@ import {
 } from '../shared/geometry';
 import type { Attribution, Route, SourceInfo, Stop, Vehicle, VehicleMode } from '../shared/types';
 import { getRoutes, getSources, getVehicles } from './api';
-import { createMenu, type Menu } from './menu';
+import { createMenu, TRACKING_MODES, type Menu, type TrackingMode } from './menu';
 // The menu's display font, bundled so that nothing is fetched from a font service.
 import '@fontsource/russo-one';
 import './style.css';
@@ -149,6 +149,8 @@ interface SourceState {
   visibleStops: Map<VehicleMode, Stop[]>;
   /** Where each vehicle was last drawn, so a popup can stay attached to it. */
   drawn: Map<string, Position>;
+  /** Which way each vehicle was last drawn facing, for cameras that follow from behind or ahead. */
+  drawnBearings: Map<string, number>;
   /** The stops along each shape, in order, with how far along it (0 to 1) each one is. */
   shapeStops: Map<string, { stop: Stop; fraction: number }[]>;
   /** Which shape each path is, to look up the stops along the path a vehicle is on. */
@@ -179,11 +181,24 @@ applyThemeVariables();
 // Set whenever something other than animation changes what should be drawn.
 let needsRedraw = true;
 let hovered: Hovered | undefined;
+// While paused, nothing is fetched and vehicles stay put. Their motion runs
+// on a clock of its own that stops with the pause, so that on resuming they
+// carry on from where they were rather than leaping ahead.
+let paused = false;
+let pausedAt = 0;
+let pausedTotal = 0;
+const vehicleClock = () => (paused ? pausedAt : performance.now()) - pausedTotal;
 // True once the hovered object has been clicked, which keeps it selected when the pointer moves on.
 let pinned = false;
 // True while the camera is following the pinned vehicle.
 let tracking = false;
 let trackedAt = 0;
+// False while the camera is still swinging over to the vehicle; once it has
+// arrived it holds the vehicle exactly in place instead of trailing it.
+let trackLocked = false;
+// The left padding last given to the map for the menu; see `syncMenuPadding`.
+let appliedPadding = 0;
+let trackingMode = loadTrackingMode();
 // Whether the user has a hand on the map: a button or finger down, or a recent turn of the wheel.
 let pointerDown = false;
 let wheelUntil = 0;
@@ -201,6 +216,34 @@ const CLICK_RADIUS_PX = 4;
 const TRACK_TIME_MS = 220;
 // How long after the last wheel movement a zoom is taken to be still going.
 const WHEEL_SETTLE_MS = 400;
+// How close, in pixels, the camera must get before it locks on.
+const TRACK_LOCK_PX = 2;
+// The tilt the camera settles at in every mode but Free, and how quickly it
+// swings round to a new heading or tilt (the time to close about 63% of the gap).
+const TRACKING_PITCH = 62;
+const TRACK_TURN_TIME_MS = 700;
+// One circuit of the helicopter view takes a minute and a half.
+const HELICOPTER_DEGREES_PER_S = 4;
+const TRACKING_STORAGE_KEY = 'mini-toronto-tracking';
+
+function loadTrackingMode(): TrackingMode {
+  try {
+    const saved = localStorage.getItem(TRACKING_STORAGE_KEY);
+    return TRACKING_MODES.find((mode) => mode.id === saved)?.id ?? 'free';
+  } catch {
+    // Storage can be unavailable (private windows, blocked site data).
+    return 'free';
+  }
+}
+
+function setTrackingMode(mode: TrackingMode) {
+  trackingMode = mode;
+  try {
+    localStorage.setItem(TRACKING_STORAGE_KEY, mode);
+  } catch {
+    // The choice just won't be remembered.
+  }
+}
 const POPUP_GAP_PX = 14;
 const POPUP_EDGE_MARGIN_PX = 8;
 const popupAnchor = document.createElement('div');
@@ -373,11 +416,8 @@ function describe(vehicle: Vehicle, state: SourceState): string {
   const route = state.routes.get(vehicle.routeId!);
   const lines = [`${route ? `${route.shortName} ${route.longName}` : `Route ${vehicle.routeId}`} · ${mode}`];
   if (vehicle.headsign) lines.push(vehicle.headsign);
-  lines.push(state.info.simulated ? 'Position estimated from the timetable' : `Vehicle ${vehicle.id}`);
-  const details: string[] = [];
-  if (vehicle.speed !== undefined) details.push(`${Math.round(vehicle.speed * 3.6)} km/h`);
-  if (vehicle.occupancy) details.push(vehicle.occupancy.toLowerCase().replaceAll('_', ' '));
-  if (details.length > 0) lines.push(details.join(' · '));
+  // Timetable-placed trains have no fleet number, only a made-up id.
+  if (!state.info.simulated) lines.push(`Vehicle ${vehicle.id}`);
   return lines.join('\n');
 }
 
@@ -411,6 +451,7 @@ function handleClick(point: { x: number; y: number }) {
   // A clicked vehicle is also brought to the middle of the map and followed.
   tracking = pinned && hovered?.kind === 'vehicles';
   trackedAt = performance.now();
+  trackLocked = false;
 }
 
 /** Shows the popup, glow and routes for whatever a pick found, or clears them if it found nothing. */
@@ -573,30 +614,87 @@ function ringHighlight(
   return [ring('glow', GLOW_WIDTH_PX, GLOW_ALPHA), ring('line', HIGHLIGHT_WIDTH_PX, 255)];
 }
 
+/** True while the user is working the map: moving it from code then would cancel their gesture. */
+function userHasHandOnMap(now: number): boolean {
+  return pointerDown || now < wheelUntil || map.isMoving();
+}
+
+/** The map's padding for the part of the screen the menu covers. */
+function menuPadding() {
+  return { left: Math.round(menu?.coveredWidth() ?? 0), top: 0, right: 0, bottom: 0 };
+}
+
 /**
- * Moves the map a step toward having the tracked vehicle in the middle of
- * the part of the screen the menu does not cover.
+ * Tells the map how much of the screen the menu covers, so that its centre,
+ * and the point its perspective converges on, is the middle of what is left.
+ * Without this a tracked vehicle would sit off the camera's line of sight
+ * whenever the menu is open. What is on screen is held where it is.
+ */
+function syncMenuPadding() {
+  const padding = menuPadding();
+  if (padding.left === appliedPadding || (tracking && hovered) || userHasHandOnMap(performance.now())) return;
+  const { clientWidth, clientHeight } = map.getContainer();
+  // The spot that will be the new centre keeps the ground it is showing now.
+  const center = map.unproject([(padding.left + clientWidth) / 2, clientHeight / 2]);
+  map.jumpTo({ center, padding });
+  appliedPadding = padding.left;
+}
+
+/**
+ * Keeps the tracked vehicle in the middle of the part of the screen the menu
+ * does not cover, and in every mode but Free also turns and tilts the camera:
+ * behind the vehicle, ahead of it, or circling it.
  */
 function trackCamera() {
   const now = performance.now();
   const elapsed = now - trackedAt;
   trackedAt = now;
-  // Stands back while the user has a hand on the map: moving it from here
-  // cancels whatever gesture they are making, including one that has only
-  // just begun. Zooming, tilting and turning are caught up with afterwards;
-  // dragging lets go of the vehicle altogether.
-  const userBusy = pointerDown || now < wheelUntil || map.isMoving();
+  // Stands back while the user has a hand on the map. Zooming, tilting and
+  // turning are caught up with afterwards; dragging lets go of the vehicle
+  // altogether.
+  const userBusy = userHasHandOnMap(now);
+  if (userBusy) trackLocked = false;
   if (!tracking || !hovered || userBusy) return;
 
+  const padding = menuPadding();
   const { clientWidth, clientHeight } = map.getContainer();
-  const covered = menu?.coveredWidth() ?? 0;
   const vehicle = map.project(hovered.anchor);
-  const offX = vehicle.x - (covered + clientWidth) / 2;
-  const offY = vehicle.y - clientHeight / 2;
-  if (Math.hypot(offX, offY) < 0.5) return;
+  const off = Math.hypot(vehicle.x - (padding.left + clientWidth) / 2, vehicle.y - clientHeight / 2);
+  if (off <= TRACK_LOCK_PX) trackLocked = true;
 
-  const share = 1 - Math.exp(-elapsed / TRACK_TIME_MS);
-  map.jumpTo({ center: map.unproject([clientWidth / 2 + offX * share, clientHeight / 2 + offY * share]) });
+  // Eases over to the vehicle at first; once there, holds it exactly.
+  const share = trackLocked ? 1 : 1 - Math.exp(-elapsed / TRACK_TIME_MS);
+  const from = map.getCenter();
+  const center: Position = [
+    from.lng + (hovered.anchor[0] - from.lng) * share,
+    from.lat + (hovered.anchor[1] - from.lat) * share,
+  ];
+
+  let bearing = map.getBearing();
+  let pitch = map.getPitch();
+  if (trackingMode !== 'free') {
+    const turnShare = 1 - Math.exp(-elapsed / TRACK_TURN_TIME_MS);
+    if (trackingMode === 'helicopter') {
+      // Circling is motion too, so it stops with everything else when paused.
+      if (!paused) bearing += (HELICOPTER_DEGREES_PER_S * elapsed) / 1000;
+    } else {
+      // Looking along the vehicle's heading puts the camera behind it.
+      const heading = hovered.state.drawnBearings.get(hovered.id) ?? bearing;
+      const wanted = trackingMode === 'top-back' ? heading : heading + 180;
+      bearing += (((wanted - bearing + 540) % 360) - 180) * turnShare;
+    }
+    pitch += (TRACKING_PITCH - pitch) * turnShare;
+  }
+
+  const still =
+    off < 0.05 &&
+    padding.left === appliedPadding &&
+    Math.abs(bearing - map.getBearing()) < 0.01 &&
+    Math.abs(pitch - map.getPitch()) < 0.01;
+  if (still) return;
+  // One move for everything, so that the turn pivots on the vehicle.
+  map.jumpTo({ center, bearing, pitch, padding });
+  appliedPadding = padding.left;
 }
 
 /**
@@ -740,6 +838,7 @@ function buildLayers(now: number) {
       inService(vehicle) ? !state.hiddenRoutes.has(vehicle.routeId!) : showOutOfService,
     );
     state.drawn = new Map(data.map((item) => [item.vehicle.id, item.position]));
+    state.drawnBearings = new Map(data.map((item) => [item.vehicle.id, item.bearing]));
     if (pinned && state.showStops) {
       const clicked = data.find((item) => item.vehicle.id === hoveredVehicleId(state));
       if (clicked) upcomingStopLayers.push(...upcomingStopHighlight(state, clicked));
@@ -811,14 +910,15 @@ function buildLayers(now: number) {
 let wasAnimating = false;
 
 function frame() {
-  const now = performance.now();
-  const animating = states.some((state) => state.visible && state.tracker.isAnimating(now));
+  const now = vehicleClock();
+  const animating = !paused && states.some((state) => state.visible && state.tracker.isAnimating(now));
   // One extra frame after animation ends so vehicles land exactly on target.
   if (needsRedraw || animating || wasAnimating) {
     overlay.setProps({ layers: buildLayers(now) });
     needsRedraw = false;
   }
   followHovered();
+  syncMenuPadding();
   wasAnimating = animating;
   requestAnimationFrame(frame);
 }
@@ -840,7 +940,7 @@ function statusText(state: SourceState, vehicles: Vehicle[], fetchedAt: number, 
 async function refresh(state: SourceState) {
   try {
     const snapshot = await getVehicles(state.info.id);
-    state.tracker.update(snapshot.vehicles, performance.now());
+    state.tracker.update(snapshot.vehicles, vehicleClock());
     needsRedraw = true;
     menu?.setStatus(state.info.id, statusText(state, snapshot.vehicles, snapshot.fetchedAt, snapshot.stale), snapshot.stale);
   } catch (error) {
@@ -850,8 +950,8 @@ async function refresh(state: SourceState) {
 }
 
 async function poll(state: SourceState) {
-  // Don't spend upstream requests on a tab nobody is looking at.
-  if (!document.hidden) await refresh(state);
+  // Don't spend upstream requests on a tab nobody is looking at, or while paused.
+  if (!document.hidden && !paused) await refresh(state);
   setTimeout(() => void poll(state), state.info.pollIntervalMs);
 }
 
@@ -899,6 +999,20 @@ async function loadRoutes(state: SourceState) {
 function lineColor(route: Route): Color {
   const { alpha } = LINE_STYLES[route.mode];
   return usesRouteColor(route.mode) ? hexToColor(route.color, alpha) : withAlpha(theme.modeColors[route.mode], alpha);
+}
+
+function setPaused(pause: boolean) {
+  if (pause === paused) return;
+  const now = performance.now();
+  if (pause) pausedAt = now;
+  else pausedTotal += now - pausedAt;
+  paused = pause;
+  // Also stops the menu's own animation.
+  document.documentElement.toggleAttribute('data-paused', pause);
+  for (const state of states) {
+    if (pause) menu?.setStatus(state.info.id, 'Paused', false);
+    else void refresh(state);
+  }
 }
 
 /** Rebuilds the lists of lines and stops to draw after routes are shown, hidden or picked out. */
@@ -958,6 +1072,7 @@ function createState(info: SourceInfo): SourceState {
     visibleLines: [],
     visibleStops: new Map(),
     drawn: new Map(),
+    drawnBearings: new Map(),
     shapeStops: new Map(),
     shapeIds: new Map(),
   };
@@ -989,6 +1104,9 @@ async function start() {
     sources: infos,
     lightMode: themeName === 'light',
     onLightMode: (on) => setTheme(on ? 'light' : 'dark'),
+    onPaused: setPaused,
+    trackingMode,
+    onTrackingMode: setTrackingMode,
     onGroupVisible: (group, visible) => setInGroup(group, (state) => (state.visible = visible)),
     onGroupRouteLines: (group, shown) => setInGroup(group, (state) => (state.showRouteLines = shown)),
     onGroupStops: (group, shown) => setInGroup(group, (state) => (state.showStops = shown)),
@@ -1023,7 +1141,7 @@ async function start() {
     void (state.info.hasRoutes ? loadRoutes(state) : Promise.resolve()).then(() => poll(state));
   }
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) for (const state of states) void refresh(state);
+    if (!document.hidden && !paused) for (const state of states) void refresh(state);
   });
   requestAnimationFrame(frame);
 }

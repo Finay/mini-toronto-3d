@@ -1,9 +1,27 @@
 import type { Attribution, Route, SourceInfo, VehicleMode } from '../shared/types';
 
+/** How the camera follows a vehicle that has been clicked. */
+export type TrackingMode = 'free' | 'top-back' | 'top-front' | 'helicopter';
+
+export const TRACKING_MODES: { id: TrackingMode; name: string }[] = [
+  // Keeps the vehicle centred and leaves the angle alone.
+  { id: 'free', name: 'Free' },
+  // Above and behind the vehicle, facing the way it is going.
+  { id: 'top-back', name: 'Top-back' },
+  // Above and ahead of the vehicle, looking back at it.
+  { id: 'top-front', name: 'Top-front' },
+  // Circling in the air around the vehicle.
+  { id: 'helicopter', name: 'Helicopter' },
+];
+
 export interface MenuOptions {
   sources: SourceInfo[];
   lightMode: boolean;
   onLightMode(on: boolean): void;
+  /** Called when the user pauses or resumes live updates and animation. */
+  onPaused(paused: boolean): void;
+  trackingMode: TrackingMode;
+  onTrackingMode(mode: TrackingMode): void;
   // Each group of sources (an agency, such as "TTC") has a section in the
   // Data tab with these three switches. Everything starts switched on.
   onGroupVisible(group: string, visible: boolean): void;
@@ -335,7 +353,43 @@ export function createMenu(options: MenuOptions): Menu {
 
   // Appearance
   const appearance = addTab('Appearance');
-  appearance.append(checkbox('Light mode', options.lightMode, options.onLightMode).row);
+  // Pausing stops the map fetching and animating, for a slow machine or a metered connection.
+  const pause = element('button', 'text-button pause-button', 'Pause');
+  pause.setAttribute('aria-pressed', 'false');
+  const pauseNote = element('p', 'note', 'Stops live updates and vehicle movement to lighten the load.');
+  pause.addEventListener('click', () => {
+    const paused = pause.getAttribute('aria-pressed') !== 'true';
+    pause.setAttribute('aria-pressed', String(paused));
+    pause.textContent = paused ? 'Resume' : 'Pause';
+    pauseNote.textContent = paused
+      ? 'Paused: the map is not updating. Vehicles are where they were when you paused.'
+      : 'Stops live updates and vehicle movement to lighten the load.';
+    options.onPaused(paused);
+  });
+  appearance.append(checkbox('Light mode', options.lightMode, options.onLightMode).row, pause, pauseNote);
+
+  // Tracking options: how the camera follows a clicked vehicle.
+  const tracking = element('div', 'option-group');
+  tracking.setAttribute('role', 'radiogroup');
+  tracking.setAttribute('aria-label', 'Tracking');
+  for (const mode of TRACKING_MODES) {
+    const input = element('input');
+    input.type = 'radio';
+    input.name = 'tracking-mode';
+    input.value = mode.id;
+    input.checked = mode.id === options.trackingMode;
+    input.addEventListener('change', () => {
+      if (input.checked) options.onTrackingMode(mode.id);
+    });
+    const row = element('label', 'check option');
+    row.append(input, element('span', 'option-name', mode.name));
+    tracking.append(row);
+  }
+  appearance.append(
+    element('h2', undefined, 'Tracking'),
+    element('p', 'note plain', 'How the camera follows a vehicle after you click it.'),
+    tracking,
+  );
 
   // Data: one section per group of sources, then the planned ones
   const data = addTab('Data');
@@ -402,7 +456,17 @@ export function createMenu(options: MenuOptions): Menu {
     link({ text: 'Mini Tokyo 3D', url: 'https://github.com/nagix/mini-tokyo-3d' }),
     '.',
   );
+  // The name as a logo: three blocks, read in order as "Mini Toronto 3D".
+  const logo = element('h1', 'logo');
+  logo.append(
+    element('span', 'logo-mini', 'Mini'),
+    ' ',
+    element('span', 'logo-toronto', 'Toronto'),
+    ' ',
+    element('span', 'logo-3d', '3D'),
+  );
   about.append(
+    logo,
     inspiration,
     element(
       'p',
