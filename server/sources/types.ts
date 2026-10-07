@@ -1,3 +1,4 @@
+import type { GtfsSchedule } from '../../shared/schedule';
 import type { Camera, RouteNetwork, SourceInfo, Vehicle } from '../../shared/types';
 
 /** What every source says about itself. `hasRoutes` is derived when the source is served. */
@@ -9,6 +10,8 @@ export interface VehicleSource {
   fetchVehicles(): Promise<Vehicle[]>;
   /** Route lines and the paths vehicles follow, if the source has them. */
   network?: RouteNetwork;
+  /** The timetable its vehicles are placed from, if that is how they are placed. */
+  schedule?: GtfsSchedule;
 }
 
 /** A provider of fixed cameras, each with a still image that is refreshed in place. */

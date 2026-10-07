@@ -1,7 +1,8 @@
-import type { Attribution, RouteNetwork, VehicleMode } from '../../shared/types';
+import type { Attribution, RouteNetwork } from '../../shared/types';
 import { readProcessed } from '../processedData';
 import { fetchVehiclePositions, withShapes, type TripShapes } from './gtfsRealtime';
 import { createScheduledSource, type GtfsSchedule } from './gtfsSchedule';
+import { ttcModeOf } from './ttcMode';
 import type { VehicleSource } from './types';
 
 const VEHICLES_URL = 'https://bustime.ttc.ca/gtfsrt/vehicles';
@@ -21,14 +22,6 @@ const schedule = readProcessed<GtfsSchedule>('ttc/schedule.json');
 
 if (!liveNetwork || !tripShapes || !scheduledNetwork || !schedule) {
   console.warn('[ttc] Processed GTFS data not found; run `npm run data` for route lines and subway trains.');
-}
-
-// The feed has no mode field, and route numbers are unreliable for this
-// because buses often substitute on streetcar routes. Fleet numbers are
-// stable: streetcars are 4400-4699, everything else in the feed is a bus.
-export function ttcModeOf(vehicle: { id: string }): VehicleMode {
-  const fleetNumber = Number(vehicle.id);
-  return fleetNumber >= 4400 && fleetNumber <= 4699 ? 'streetcar' : 'bus';
 }
 
 export const ttc: VehicleSource = {

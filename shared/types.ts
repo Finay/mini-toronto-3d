@@ -49,6 +49,18 @@ export interface SourceInfo {
   hasRoutes: boolean;
 }
 
+/**
+ * What the site is told when it is built to run without its server: the
+ * sources, and for live ones the address of a proxy to fetch them from.
+ */
+export interface StaticManifest {
+  /** When the data files were written, as an ISO 8601 time. */
+  builtAt: string;
+  sources: SourceInfo[];
+  /** Source id to the address of a `VehicleSnapshot`, for sources that are neither timetabled nor files. */
+  live: Record<string, string>;
+}
+
 export interface VehicleSnapshot {
   sourceId: string;
   /** Epoch milliseconds at which the server fetched this from upstream. */

@@ -1,0 +1,10 @@
+# Configuration for the TTC feed proxy. Deploy with `npm run worker:deploy`.
+name = "mini-toronto-ttc"
+main = "index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Which site may read the Worker's responses. "*" lets any site use it; once
+# the static site has an address, put that here instead, with no trailing
+# slash, e.g. "https://your-username.github.io".
+ALLOWED_ORIGIN = "*"

@@ -9,7 +9,12 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "data": "tsx scripts/build-gtfs-data.ts"
+    "data": "tsx scripts/build-gtfs-data.ts",
+    "worker:dev": "wrangler dev --config worker/wrangler.toml",
+    "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
+    "worker:check": "tsc --noEmit -p worker",
+    "build:static": "tsc --noEmit && vite build --mode static && tsx scripts/build-static-data.ts dist-static/static-data",
+    "preview:static": "vite preview --mode static"
   },
   "dependencies": {
     "@deck.gl/core": "^9.4.0",
@@ -25,12 +30,14 @@
     "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261007.1",
     "@types/node": "^26.6.4",
     "concurrently": "^10.0.5",
     "happy-dom": "^20.14.5",
     "node-stream-zip": "^1.16.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "wrangler": "^4.148.0"
   }
 }

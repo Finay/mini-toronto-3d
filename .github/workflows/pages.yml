@@ -1,0 +1,51 @@
+# Builds the site to run without a server and publishes it to GitHub Pages.
+# In the repository's settings, Pages must have "GitHub Actions" as its source.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Timetables expire and are replaced about monthly, so rebuild every Monday
+  # (09:00 UTC) to pick up new ones even when nothing has been pushed.
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A newer run replaces one still in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Downloads the TTC, GO Transit and UP Express schedules. Downloading the
+      # Metrolinx ones is subject to its Access and Use Agreement (see README).
+      - run: npm run data -- --refresh
+      - run: npm test
+      - run: npm run build:static
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-static
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

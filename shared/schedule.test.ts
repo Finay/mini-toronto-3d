@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { encodeShape } from '../../shared/geometry';
-import type { RouteNetwork } from '../../shared/types';
-import { ScheduleSimulator, type GtfsSchedule } from './gtfsSchedule';
+import { encodeShape } from './geometry';
+import type { RouteNetwork } from './types';
+import { ScheduleSimulator, type GtfsSchedule } from './schedule';
 
 // A line running due north for 0.02 degrees of latitude.
 const network: RouteNetwork = {

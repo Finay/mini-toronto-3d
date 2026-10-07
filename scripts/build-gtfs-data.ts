@@ -17,7 +17,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import StreamZip from 'node-stream-zip';
 import type { TripShapes } from '../server/sources/gtfsRealtime';
-import type { GtfsSchedule, SchedulePattern, ScheduleService } from '../server/sources/gtfsSchedule';
+import type { GtfsSchedule, SchedulePattern, ScheduleService } from '../shared/schedule';
 import {
   buildPath,
   distanceMetres,

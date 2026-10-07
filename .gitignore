@@ -1,15 +1,20 @@
 # Dependencies and build output
 node_modules/
 dist/
+dist-static/
 
 # Downloaded datasets and files generated from them by `npm run data`
 data/raw/
 data/processed/
 
+# Cloudflare Wrangler's local state
+.wrangler/
+
 # Secrets
 .env
 .env.*
 !.env.example
+!.env.static
 
 # Claude Code personal files
 CLAUDE.local.md

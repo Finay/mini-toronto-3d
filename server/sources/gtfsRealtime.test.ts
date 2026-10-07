@@ -1,7 +1,7 @@
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import { describe, expect, it } from 'vitest';
 import { decodeVehiclePositions } from './gtfsRealtime';
-import { ttcModeOf } from './ttc';
+import { ttcModeOf } from './ttcMode';
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
 

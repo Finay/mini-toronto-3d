@@ -13,14 +13,16 @@ TypeScript throughout. Client: Vite, MapLibre GL (OpenFreeMap "dark" basemap, no
 ## Layout
 
 - `shared/types.ts` — the normalized data model (`Vehicle`, `SourceInfo`, `VehicleSnapshot`, `RouteNetwork`) used by both sides
+- `shared/schedule.ts` — places vehicles from a timetable; used by the server and, in the static build, by the browser
 - `shared/geometry.ts` — paths, projection, simplification and polyline encoding, used by all three parts below
 - `scripts/build-gtfs-data.ts` — turns a static GTFS zip into the files in `data/processed/`
 - `server/` — proxy that fetches upstream feeds, normalizes and caches them
   - `sources/` — one module per data source, registered in `sources/index.ts`
   - `sources/gtfsRealtime.ts` — reusable GTFS-realtime VehiclePosition decoder
-  - `sources/gtfsSchedule.ts` — reusable timetable simulator (`createScheduledSource`)
+  - `sources/gtfsSchedule.ts` — `createScheduledSource`, wrapping the timetable simulator in `shared/schedule.ts`
   - `cache.ts` — TTL cache with stale fallback; `app.ts` — routes; `index.ts` — entry point
 - `src/` — browser client; `vehicleTracker.ts` interpolates between snapshots, `menu.ts` builds the flyout menu, `themes.ts` holds colours, `main.ts` wires the map, layers and menu together
+- `worker/` — a Cloudflare Worker that proxies the live TTC feed with a CORS header, for a future static build of the site (see `worker/README.md`). Not part of the normal app; it has its own `tsconfig.json` and `npm run worker:dev`, `worker:check` and `worker:deploy`
 - `public/` — static assets served as-is
 - `data/raw/` — downloaded feeds; `data/processed/` — files generated from them. Both are gitignored
 
@@ -31,6 +33,7 @@ TypeScript throughout. Client: Vite, MapLibre GL (OpenFreeMap "dark" basemap, no
 - `npm test` — unit tests
 - `npm run typecheck` — TypeScript check
 - `npm run build` — typecheck and build the client to `dist/`
+- `npm run build:static` — build the site to run without the server, into `dist-static/` (needs `npm run data` first); `npm run preview:static` serves it locally
 - `npm start` — production: serves the API and the built `dist/` on :8787 (run `npm run build` first)
 
 In development, open the Vite URL (:5173), not :8787; the API server only serves the client in production.
@@ -75,6 +78,19 @@ Route shapes: the published shapes are chains of straight segments that zigzag b
 Themes: `src/themes.ts` holds every colour that differs between light and dark mode, including the basemap style (OpenFreeMap "fiord" for dark, "positron" for light). Switching calls `map.setStyle`, which discards custom map layers, so everything added to the basemap (water and park colours, grass layer, 3D buildings, tile LOD settings) is applied in the `style.load` handler in `src/main.ts`. Panel colours are CSS variables keyed on `data-theme`.
 
 3D: buildings are a MapLibre `fill-extrusion` layer over the basemap's `building` tiles. Those tiles only contain buildings at zoom 13 and 14, so buildings cannot be shown when zoomed out past 13; `setSourceTileLodParams` keeps distant tiles detailed enough to have them in tilted views. The deck.gl overlay is not interleaved with the map, so route lines and vehicles are always drawn on top of buildings rather than hidden behind them.
+
+## Static build
+
+`npm run build:static` produces a copy of the site that needs no server, for GitHub Pages. It is the same client built with `vite build --mode static` (which sets `VITE_STATIC` from `.env.static`, a relative base and the `dist-static` output folder), followed by `scripts/build-static-data.ts`, which asks the server's own sources for their data and writes it to `dist-static/static-data/`.
+
+- `src/api.ts` chooses the data layer: the server's `/api`, or `src/staticApi.ts` in a static build
+- The static layer reads `manifest.json` (the sources, and a proxy address for each live one), `<id>/routes.json`, `<id>/schedule.json` and `<id>/cameras.json`
+- Timetable-placed vehicles are computed in the browser by the same `ScheduleSimulator` the server uses, which is why it lives in `shared/schedule.ts`
+- Live TTC vehicles come from the Cloudflare Worker in `worker/` (deployed at `https://mini-toronto-ttc.kian-benner.workers.dev/vehicles`; override with `TTC_FEED_URL` at build time). They arrive without `shapeId`, so vehicles follow the nearest path of their route
+- A live source with no proxy, or a camera list that cannot be fetched at build time, is left out of the static site with a warning
+- `.github/workflows/pages.yml` rebuilds and deploys on push to `main` and weekly; the camera list and timetables are only as fresh as the last build
+
+Anything added to the server's API needs a counterpart in `DataApi`, `staticApi.ts` and `build-static-data.ts`, or it will not exist in the static site.
 
 ## Adding a data source
 
