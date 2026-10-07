@@ -24,6 +24,8 @@ export interface Theme {
   stop: Color;
   /** Rapid transit stations: a filled disc with a contrasting ring. */
   station: { fill: Color; outline: Color };
+  /** Traffic cameras: a colour no vehicle or stop uses. */
+  camera: { fill: Color; outline: Color };
   /** Outline of whatever the pointer is over. */
   highlight: Color;
   // Outlines keep dots distinct from the basemap and from each other.
@@ -56,6 +58,7 @@ export const THEMES: Record<ThemeName, Theme> = {
     outOfService: [205, 210, 220, 170],
     stop: [235, 240, 250, 200],
     station: { fill: [255, 255, 255, 255], outline: [18, 22, 34, 255] },
+    camera: { fill: [214, 126, 255, 255], outline: [18, 22, 34, 255] },
     highlight: [255, 255, 255, 255],
     liveOutline: [18, 22, 34, 255],
     simulatedOutline: [255, 255, 255, 240],
@@ -81,6 +84,7 @@ export const THEMES: Record<ThemeName, Theme> = {
     outOfService: [120, 125, 135, 170],
     stop: [70, 78, 95, 210],
     station: { fill: [255, 255, 255, 255], outline: [30, 34, 46, 255] },
+    camera: { fill: [146, 62, 204, 255], outline: [255, 255, 255, 255] },
     highlight: [255, 122, 0, 255],
     liveOutline: [255, 255, 255, 255],
     simulatedOutline: [30, 34, 46, 255],

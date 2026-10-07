@@ -121,6 +121,14 @@ describe('menu', () => {
     expect($('.flyout-content').firstElementChild?.classList.contains('tabs')).toBe(true);
   });
 
+  it('gives a contact email address in About', () => {
+    setup();
+    const email = $$('.tab-panel')[2]!.querySelector<HTMLAnchorElement>('a[href^="mailto:"]')!;
+
+    expect(email.textContent).toBe('kian.benner@gmail.com');
+    expect(email.getAttribute('href')).toBe('mailto:kian.benner@gmail.com');
+  });
+
   it('opens the About tab with the name as a logo heading', () => {
     setup();
     const about = $$('.tab-panel')[2]!;
@@ -129,12 +137,22 @@ describe('menu', () => {
     expect(about.querySelector('.logo')?.textContent).toBe('Mini Toronto 3D');
   });
 
-  it('has the light mode toggle and a pause button in Appearance', () => {
+  it('has light mode and live toggles in Appearance, with live on to begin with', () => {
     setup();
-    const appearance = $$('.tab-panel')[0]!;
+    const toggles = $$<HTMLInputElement>('.tab-panel:first-child > .check input');
 
-    expect(appearance.querySelector('.check')?.textContent).toBe('Light mode');
-    expect(appearance.querySelector('.pause-button')?.textContent).toBe('Pause');
+    expect(toggles.map((toggle) => toggle.parentElement?.textContent)).toEqual(['Light mode', 'Live']);
+    expect(toggles[1]!.checked).toBe(true);
+  });
+
+  it('pauses when Live is unticked and resumes when it is ticked again', () => {
+    const { options } = setup();
+    const live = $$<HTMLInputElement>('.tab-panel:first-child > .check input')[1]!;
+
+    live.click();
+    expect(options.onPaused).toHaveBeenLastCalledWith(true);
+    live.click();
+    expect(options.onPaused).toHaveBeenLastCalledWith(false);
   });
 
   it('offers four ways to track a vehicle in Appearance, with the current one chosen', () => {
@@ -149,29 +167,16 @@ describe('menu', () => {
     expect(choices.map((choice) => choice.checked)).toEqual([false, false, false, true]);
   });
 
-  it('pauses and resumes from one button, which says what it will do next', () => {
-    const { options } = setup();
-    const button = $<HTMLButtonElement>('.pause-button');
-
-    button.click();
-    expect(options.onPaused).toHaveBeenLastCalledWith(true);
-    expect(button.textContent).toBe('Resume');
-    expect(button.getAttribute('aria-pressed')).toBe('true');
-
-    button.click();
-    expect(options.onPaused).toHaveBeenLastCalledWith(false);
-    expect(button.textContent).toBe('Pause');
-    expect(button.getAttribute('aria-pressed')).toBe('false');
-  });
-
   it('groups sources into a TTC section alongside the planned ones', () => {
     setup();
 
-    expect($$('.section-name span:first-child').map((name) => name.textContent)).toEqual([
-      'TTC',
-      'GO Transit and UP Express',
-      'Bike Share Toronto',
-    ]);
+    expect($$('.section-name span:first-child').map((name) => name.textContent)).toEqual(['TTC', 'Bike Share Toronto']);
+  });
+
+  it('marks a section with the kind of thing it holds', () => {
+    setup();
+
+    expect($$('.section').map((section) => section.dataset.kind)).toEqual(['vehicles', 'bikes']);
   });
 
   it('opens the first section and folds the others, each from its name', () => {

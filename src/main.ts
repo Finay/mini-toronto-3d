@@ -1,5 +1,5 @@
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { IconLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers';
 import { CubeGeometry } from '@luma.gl/engine';
@@ -15,8 +15,8 @@ import {
   type Path,
   type Position,
 } from '../shared/geometry';
-import type { Attribution, Route, SourceInfo, Stop, Vehicle, VehicleMode } from '../shared/types';
-import { getRoutes, getSources, getVehicles } from './api';
+import type { Attribution, Camera, Route, SourceInfo, Stop, Vehicle, VehicleMode } from '../shared/types';
+import { getCameras, getRoutes, getSources, getVehicles } from './api';
 import { createMenu, TRACKING_MODES, type Menu, type TrackingMode } from './menu';
 // The menu's display font, bundled so that nothing is fetched from a font service.
 import '@fontsource/russo-one';
@@ -71,7 +71,7 @@ const VEHICLE_BOXES: Record<VehicleMode, { cars: number; length: number; width: 
   bus: { cars: 1, length: 3, width: 1.3, height: 1.6 },
   streetcar: { cars: 1, length: 7.5, width: 1.3, height: 1.8 },
   lrt: { cars: 2, length: 5.5, width: 1.35, height: 1.85 },
-  train: { cars: 4, length: 5, width: 1.5, height: 2.25 },
+  train: { cars: 6, length: 5, width: 1.5, height: 2.25 },
   subway: { cars: 4, length: 4.25, width: 1.55, height: 1.85 },
 };
 const CAR_GAP_M = 0.4;
@@ -157,16 +157,27 @@ interface SourceState {
   shapeIds: Map<Path, string>;
 }
 
+/** A source of traffic cameras: fixed markers whose popups show the latest image. */
+interface CameraState {
+  info: SourceInfo;
+  visible: boolean;
+  cameras: Camera[];
+}
+
 /** What the pointer is over (or was clicked on), and the map position its popup is attached to. */
 interface Hovered {
-  kind: 'vehicles' | 'stops';
-  state: SourceState;
+  kind: 'vehicles' | 'stops' | 'cameras';
+  /** The source a vehicle or stop belongs to; cameras have `cameraState` instead. */
+  state?: SourceState;
   id: string;
   anchor: Position;
   /** Set when the object is a stop, for drawing its highlight. */
   stop?: Stop;
   /** The hovered vehicle's route, or the routes serving the hovered stop: picked out on the map. */
   routeIds: string[];
+  cameraState?: CameraState;
+  /** The image in a camera's popup, and the minute it was loaded in, for refreshing it. */
+  image?: { element: HTMLImageElement; url: string; minute: number };
 }
 
 // Display choices with no control in the panel; change them here.
@@ -174,6 +185,7 @@ const showOutOfService = false;
 const show3dVehicles = true;
 
 const states: SourceState[] = [];
+const cameraStates: CameraState[] = [];
 let themeName = loadThemeName();
 let theme = THEMES[themeName];
 document.documentElement.dataset.theme = themeName;
@@ -211,6 +223,18 @@ let highlightVersion = 0;
 // animation, so that following a moving vehicle is not itself animated.
 // How near a click must land to count as on a vehicle or stop.
 const CLICK_RADIUS_PX = 4;
+// Cameras are hidden when zoomed out further than this, and drawn this large.
+const CAMERA_MIN_ZOOM = 11.5;
+// A triangle this many metres tall, kept between these sizes in pixels.
+const CAMERA_SIZE_M = 44;
+const CAMERA_SIZE_PX: [min: number, max: number] = [9, 18];
+// The ring drawn around a hovered camera, which is sized as a circle about it.
+const CAMERA_MARKER = { radius: CAMERA_SIZE_M / 2, pixels: [CAMERA_SIZE_PX[0] / 2 + 1, CAMERA_SIZE_PX[1] / 2 + 1] as [number, number] };
+// The triangle is drawn once per theme, larger than shown so that it stays sharp.
+const CAMERA_ICON_PX = 64;
+// How often a camera popup that stays open fetches its image again. The
+// City replaces each image every few minutes and lets browsers keep one for a minute.
+const CAMERA_IMAGE_REFRESH_MS = 60_000;
 // The camera closes about 63% of its distance to a tracked vehicle in this
 // time, which makes both the first swing over to it and the following smooth.
 const TRACK_TIME_MS = 220;
@@ -269,6 +293,27 @@ const map = new MapLibreMap({
   attributionControl: false,
 });
 map.addControl(new NavigationControl({ visualizePitch: true }), 'top-right');
+const mapLoaded = new Promise<void>((resolve) => map.once('load', () => resolve()));
+
+// The loading screen is part of index.html, so that it shows before this code runs.
+const loaderShownAt = performance.now();
+// Long enough for its opening animation to play out, even on a fast connection.
+const LOADER_MIN_MS = 1_400;
+// It lifts after this long whatever has or has not loaded, so a stuck request cannot hide the map.
+const LOADER_MAX_MS = 15_000;
+setTimeout(hideLoader, LOADER_MAX_MS);
+
+function hideLoader() {
+  const loader = document.getElementById('loader');
+  if (!loader || loader.classList.contains('done')) return;
+  const wait = Math.max(0, LOADER_MIN_MS - (performance.now() - loaderShownAt));
+  setTimeout(() => {
+    loader.classList.add('done');
+    // Gone once it has slid away; the timer covers a transition that never reports back.
+    loader.addEventListener('transitionend', () => loader.remove(), { once: true });
+    setTimeout(() => loader.remove(), 1_500);
+  }, wait);
+}
 // Fires for the first style and again after every theme change, each of
 // which replaces the whole style and with it the layers added here.
 map.on('style.load', () => {
@@ -458,6 +503,11 @@ function handleClick(point: { x: number; y: number }) {
 function showFor({ object, layer }: Pick<PickingInfo, 'object' | 'layer'>) {
   // Layer ids are "<kind>:<source id>" or "<kind>:<source id>:<mode>".
   const [kind, sourceId] = layer?.id.split(':') ?? [];
+  const cameraState = cameraStates.find((candidate) => candidate.info.id === sourceId);
+  if (object && kind === 'cameras' && cameraState) {
+    showCamera(object as Camera, cameraState);
+    return;
+  }
   const state = states.find((candidate) => candidate.info.id === sourceId);
   if (!object || !state || (kind !== 'vehicles' && kind !== 'stops')) {
     hidePopup();
@@ -495,20 +545,69 @@ function showFor({ object, layer }: Pick<PickingInfo, 'object' | 'layer'>) {
     return;
   }
 
-  needsRedraw = true;
   const [title = '', ...details] = text.split('\n');
-  const titleElement = document.createElement('div');
-  titleElement.className = 'popup-title';
-  titleElement.textContent = title;
-  popup.replaceChildren(
-    titleElement,
-    ...details.map((line) => {
+  openPopup(
+    title,
+    details.map((line) => {
       const element = document.createElement('div');
       element.textContent = line;
       return element;
     }),
   );
-  // Snap back to the collapsed state at the new object, then grow from there.
+}
+
+/** Shows a camera's popup: where it is, and its latest image. */
+function showCamera(camera: Camera, cameraState: CameraState) {
+  const sameTarget = hovered?.kind === 'cameras' && hovered.cameraState === cameraState && hovered.id === camera.id;
+  if (sameTarget) {
+    placePopup();
+    return;
+  }
+  const hadRoutes = hovered !== undefined && hovered.routeIds.length > 0;
+
+  const frame = document.createElement('div');
+  frame.className = 'popup-image';
+  const element = document.createElement('img');
+  element.alt = `Traffic camera view at ${camera.name}`;
+  // Leaves the caption standing if the City's server has no image to give.
+  element.addEventListener('error', () => frame.classList.add('unavailable'));
+  element.addEventListener('load', () => frame.classList.remove('unavailable'));
+  frame.append(element);
+  const caption = document.createElement('div');
+  caption.textContent = camera.group ? `Traffic camera · ${camera.group}` : 'Traffic camera';
+
+  hovered = {
+    kind: 'cameras',
+    cameraState,
+    id: camera.id,
+    anchor: [camera.lon, camera.lat],
+    routeIds: [],
+    image: { element, url: camera.imageUrl, minute: -1 },
+  };
+  if (hadRoutes) refreshHighlight();
+  refreshCameraImage();
+  openPopup(camera.name, [frame, caption]);
+}
+
+/** Loads the open camera popup's image again once its last copy is a minute old. */
+function refreshCameraImage() {
+  const image = hovered?.image;
+  if (!image) return;
+  const minute = Math.floor(Date.now() / CAMERA_IMAGE_REFRESH_MS);
+  // Paused means no fetching, but the first image for a popup is still shown.
+  if (minute === image.minute || (paused && image.minute !== -1)) return;
+  image.minute = minute;
+  // The address never changes, so the minute is added to get past the browser's copy.
+  image.element.src = `${image.url}?t=${minute}`;
+}
+
+/** Fills the popup and plays its opening: collapsed at the object, then growing out of it. */
+function openPopup(title: string, body: HTMLElement[]) {
+  needsRedraw = true;
+  const titleElement = document.createElement('div');
+  titleElement.className = 'popup-title';
+  titleElement.textContent = title;
+  popup.replaceChildren(titleElement, ...body);
   popup.classList.add('instant');
   popup.classList.remove('visible');
   placePopup();
@@ -549,8 +648,15 @@ function placePopup() {
 /** Keeps the popup on its object as vehicles and the map move. */
 function followHovered() {
   if (!hovered) return;
+  if (hovered.kind === 'cameras') {
+    if (!hovered.cameraState?.visible) {
+      hidePopup();
+      return;
+    }
+    refreshCameraImage();
+  }
   if (hovered.kind === 'vehicles') {
-    const position = hovered.state.visible ? hovered.state.drawn.get(hovered.id) : undefined;
+    const position = hovered.state?.visible ? hovered.state.drawn.get(hovered.id) : undefined;
     if (!position) {
       hidePopup();
       return;
@@ -679,7 +785,7 @@ function trackCamera() {
       if (!paused) bearing += (HELICOPTER_DEGREES_PER_S * elapsed) / 1000;
     } else {
       // Looking along the vehicle's heading puts the camera behind it.
-      const heading = hovered.state.drawnBearings.get(hovered.id) ?? bearing;
+      const heading = hovered.state?.drawnBearings.get(hovered.id) ?? bearing;
       const wanted = trackingMode === 'top-back' ? heading : heading + 180;
       bearing += (((wanted - bearing + 540) % 360) - 180) * turnShare;
     }
@@ -714,6 +820,36 @@ function upcomingStopHighlight(state: SourceState, { vehicle, along }: TrackedVe
   return [...byMode].flatMap(([mode, positions]) =>
     ringHighlight(`upcoming:${state.info.id}:${vehicle.id}:${mode}`, positions, STOP_STYLES[mode], UPCOMING_STOP_STRENGTH),
   );
+}
+
+const cameraIcons = new Map<ThemeName, { url: string; width: number; height: number }>();
+
+/** The camera marker in the current theme's colours: an outlined triangle, as an image. */
+function cameraIcon() {
+  let icon = cameraIcons.get(themeName);
+  if (!icon) {
+    const size = CAMERA_ICON_PX;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const context = canvas.getContext('2d')!;
+    const [fr, fg, fb] = theme.camera.fill;
+    const [or, og, ob] = theme.camera.outline;
+    // Inset so that the outline's rounded corners are not cut off at the edges.
+    context.beginPath();
+    context.moveTo(size / 2, size * 0.12);
+    context.lineTo(size * 0.9, size * 0.84);
+    context.lineTo(size * 0.1, size * 0.84);
+    context.closePath();
+    context.fillStyle = `rgb(${fr} ${fg} ${fb})`;
+    context.fill();
+    context.lineJoin = 'round';
+    context.lineWidth = size * 0.11;
+    context.strokeStyle = `rgb(${or} ${og} ${ob})`;
+    context.stroke();
+    icon = { url: canvas.toDataURL(), width: size, height: size };
+    cameraIcons.set(themeName, icon);
+  }
+  return icon;
 }
 
 /** How many times real size boxes are drawn at a zoom level. */
@@ -901,10 +1037,41 @@ function buildLayers(now: number) {
     ];
   });
 
-  const stop = hovered?.kind === 'stops' && hovered.state.visible && hovered.state.showStops ? hovered.stop : undefined;
+  const stop = hovered?.kind === 'stops' && hovered.state?.visible && hovered.state.showStops ? hovered.stop : undefined;
   const stopHighlight = stop ? ringHighlight('stops', [[stop.lon, stop.lat]], STOP_STYLES[stop.mode]) : [];
 
-  return [...lineLayers, ...stopLayers, ...stopHighlight, ...upcomingStopLayers, ...vehicleLayers];
+  const cameraLayers = cameraStates
+    .filter((state) => state.visible && state.cameras.length > 0)
+    .map(
+      (state) =>
+        new IconLayer<Camera>({
+          id: `cameras:${state.info.id}`,
+          data: state.cameras,
+          visible: zoom >= CAMERA_MIN_ZOOM,
+          getPosition: (camera) => [camera.lon, camera.lat],
+          getIcon: cameraIcon,
+          getSize: CAMERA_SIZE_M,
+          sizeUnits: 'meters',
+          sizeMinPixels: CAMERA_SIZE_PX[0],
+          sizeMaxPixels: CAMERA_SIZE_PX[1],
+          updateTriggers: { getIcon: themeName },
+          pickable: true,
+        }),
+    );
+  const cameraHighlight =
+    hovered?.kind === 'cameras' && hovered.cameraState?.visible
+      ? ringHighlight('cameras', [hovered.anchor], CAMERA_MARKER)
+      : [];
+
+  return [
+    ...lineLayers,
+    ...stopLayers,
+    ...stopHighlight,
+    ...upcomingStopLayers,
+    ...cameraLayers,
+    ...cameraHighlight,
+    ...vehicleLayers,
+  ];
 }
 
 let wasAnimating = false;
@@ -1013,6 +1180,24 @@ function setPaused(pause: boolean) {
     if (pause) menu?.setStatus(state.info.id, 'Paused', false);
     else void refresh(state);
   }
+  // Camera lists stay as they are; only popup images stop being fetched again.
+}
+
+/** Loads a camera source's list of cameras, now and again every so often. */
+async function pollCameras(state: CameraState) {
+  if (!document.hidden && !paused) {
+    try {
+      const snapshot = await getCameras(state.info.id);
+      state.cameras = snapshot.cameras;
+      needsRedraw = true;
+      const count = `${snapshot.cameras.length.toLocaleString()} cameras`;
+      menu?.setStatus(state.info.id, snapshot.stale ? `${count} · list may be out of date` : count, snapshot.stale);
+    } catch (error) {
+      console.error(`[${state.info.id}]`, error);
+      menu?.setStatus(state.info.id, 'Could not load cameras; retrying', true);
+    }
+  }
+  setTimeout(() => void pollCameras(state), state.info.pollIntervalMs);
 }
 
 /** Rebuilds the lists of lines and stops to draw after routes are shown, hidden or picked out. */
@@ -1029,11 +1214,13 @@ function applyRouteFilter(state: SourceState) {
   needsRedraw = true;
 }
 
-/** Publishes the mode colours to CSS, for the swatches in the menu. */
+/** Publishes the map's marker colours to CSS, for the menu to match. */
 function applyThemeVariables() {
   for (const [mode, [r, g, b]] of Object.entries(theme.modeColors)) {
     document.documentElement.style.setProperty(`--mode-${mode}`, `rgb(${r} ${g} ${b})`);
   }
+  const [r, g, b] = theme.camera.fill;
+  document.documentElement.style.setProperty('--camera', `rgb(${r} ${g} ${b})`);
 }
 
 function setTheme(name: ThemeName) {
@@ -1089,10 +1276,14 @@ async function start() {
     notice.className = 'notice';
     notice.textContent = 'Could not reach the Mini Toronto server.';
     document.body.append(notice);
+    hideLoader();
     return;
   }
 
-  states.push(...infos.map(createState));
+  states.push(...infos.filter((info) => info.kind === 'vehicles').map(createState));
+  cameraStates.push(
+    ...infos.filter((info) => info.kind === 'cameras').map((info) => ({ info, visible: true, cameras: [] })),
+  );
   const stateOf = (sourceId: string) => states.find((state) => state.info.id === sourceId);
   const setInGroup = (group: string, change: (state: SourceState) => void) => {
     for (const state of states) if (state.info.group === group) change(state);
@@ -1107,7 +1298,10 @@ async function start() {
     onPaused: setPaused,
     trackingMode,
     onTrackingMode: setTrackingMode,
-    onGroupVisible: (group, visible) => setInGroup(group, (state) => (state.visible = visible)),
+    onGroupVisible: (group, visible) => {
+      for (const state of cameraStates) if (state.info.group === group) state.visible = visible;
+      setInGroup(group, (state) => (state.visible = visible));
+    },
     onGroupRouteLines: (group, shown) => setInGroup(group, (state) => (state.showRouteLines = shown)),
     onGroupStops: (group, shown) => setInGroup(group, (state) => (state.showStops = shown)),
     onLinesHighlighted: (sourceId, matches) => {
@@ -1135,11 +1329,18 @@ async function start() {
   map.addControl(
     new AttributionControl({ compact: true, customAttribution: [...attributions.values()].map(attributionHtml) }),
   );
+  // MapLibre opens the compact attribution box until the map is first dragged.
+  // It starts closed here, behind its "i" button, to leave the map clear.
+  map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
 
-  for (const state of states) {
+  for (const state of cameraStates) void pollCameras(state);
+  const firstData = states.map((state) =>
     // Routes first, so the first vehicles drawn are already on their paths.
-    void (state.info.hasRoutes ? loadRoutes(state) : Promise.resolve()).then(() => poll(state));
-  }
+    (state.info.hasRoutes ? loadRoutes(state) : Promise.resolve()).then(() => poll(state)),
+  );
+  // The loading screen lifts once the map has drawn and every source has
+  // answered once (or failed to: each reports its own errors in the menu).
+  void Promise.all([mapLoaded, ...firstData]).then(hideLoader);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && !paused) for (const state of states) void refresh(state);
   });

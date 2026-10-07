@@ -1,4 +1,4 @@
-import type { RouteNetwork, SourceInfo, VehicleSnapshot } from '../shared/types';
+import type { CameraSnapshot, RouteNetwork, SourceInfo, VehicleSnapshot } from '../shared/types';
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
@@ -13,3 +13,6 @@ export const getVehicles = (sourceId: string) =>
 
 export const getRoutes = (sourceId: string) =>
   getJson<RouteNetwork>(`/api/sources/${encodeURIComponent(sourceId)}/routes`);
+
+export const getCameras = (sourceId: string) =>
+  getJson<CameraSnapshot>(`/api/sources/${encodeURIComponent(sourceId)}/cameras`);

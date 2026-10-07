@@ -2,7 +2,7 @@
 
 A real-time visualization of Toronto, combining live public transit vehicle positions, landmarks, and other city data streams. Inspired by [Mini Tokyo 3D](https://github.com/nagix/mini-tokyo-3d).
 
-Work in progress. It currently shows live TTC buses and streetcars following their routes, subway and light rail trains placed from the timetable, and 3D buildings.
+Work in progress. It currently shows live TTC buses and streetcars following their routes, TTC subway and light rail trains and GO and UP Express trains placed from their timetables, City traffic cameras, and 3D buildings.
 
 ## Running
 
@@ -16,7 +16,7 @@ npm run dev
 
 Then open http://localhost:5173.
 
-`npm run data` downloads the TTC's schedule data (about 84 MB) and prepares route lines and the subway timetable. Run it again with `-- --refresh` when the TTC publishes a new schedule, roughly monthly; subway trains disappear once the downloaded schedule expires.
+`npm run data` downloads the TTC's, GO Transit's and UP Express's schedule data (about 100 MB) and prepares route lines and timetables. Downloading the GO Transit and UP Express data means accepting [Metrolinx's Access and Use Agreement](https://www.gotransit.com/en/partner-with-us/software-developers). Run it again with `-- --refresh` when a new schedule is published, roughly monthly; timetable-placed trains disappear once the downloaded schedule expires.
 
 ## Data attribution
 

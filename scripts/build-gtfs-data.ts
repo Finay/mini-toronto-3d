@@ -40,6 +40,10 @@ interface FeedConfig {
   modeOf(route: { id: string; type: string }): VehicleMode;
   /** Routes whose vehicles are placed from the timetable instead of reported live. */
   isScheduled(mode: VehicleMode): boolean;
+  /** Which routes to keep at all; every route, if not given. */
+  includes?(mode: VehicleMode): boolean;
+  /** Tidies a trip's destination text for display. */
+  headsign?(text: string): string;
 }
 
 const ttc: FeedConfig = {
@@ -66,20 +70,47 @@ const ttc: FeedConfig = {
   isScheduled: (mode) => mode === 'subway' || mode === 'lrt',
 };
 
-const FEEDS = [ttc];
+// GO Transit's rail lines. Its buses are left out: they have no live
+// positions either, and hundreds of timetable-placed coaches on highways
+// would say little. Downloading this feed is subject to Metrolinx's Access
+// and Use Agreement (see CLAUDE.md).
+const go: FeedConfig = {
+  name: 'go',
+  zipName: 'go-gtfs.zip',
+  resolveDownloadUrl: async () => 'https://assets.metrolinx.com/raw/upload/Documents/Metrolinx/Open%20Data/GO-GTFS.zip',
+  modeOf: ({ type }) => (type === '2' ? 'train' : type === '3' ? 'bus' : 'other'),
+  includes: (mode) => mode === 'train',
+  isScheduled: (mode) => mode === 'train',
+  // "LW - West Harbour GO" names the line, which is already shown, before the destination.
+  headsign: (text) => text.replace(/^\w+ - /, 'towards '),
+};
+
+// The airport train, published by Metrolinx separately from GO, on the same terms.
+const up: FeedConfig = {
+  name: 'up',
+  zipName: 'up-gtfs.zip',
+  resolveDownloadUrl: async () => 'https://assets.metrolinx.com/raw/upload/Documents/Metrolinx/Open%20Data/UP-GTFS.zip',
+  modeOf: ({ type }) => (type === '2' ? 'train' : 'other'),
+  isScheduled: (mode) => mode === 'train',
+  // "UP Express Pearson Airport" repeats the service's name before the destination.
+  headsign: (text) => text.replace(/^UP Express /, 'towards '),
+};
+
+const FEEDS = [ttc, go, up];
 
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 // Published shapes are chains of straight segments: sharp at street corners,
 // and visibly polygonal on rail curves, where points are 40 m or more apart.
 // Each shape is smoothed by this many metres (see `smooth`): little for
 // street routes, whose corners should stay at their intersections, and more
-// for rail, whose curves are broad.
+// for rail, whose curves are broad, and most for regional rail, whose
+// published shapes have a point only every few hundred metres.
 const SMOOTHING_M: Record<VehicleMode, number> = {
   other: 15,
   bus: 15,
   streetcar: 15,
   lrt: 40,
-  train: 50,
+  train: 120,
   subway: 50,
 };
 // Points closer than this to the smoothed line are dropped as redundant.
@@ -188,6 +219,7 @@ async function build(config: FeedConfig, refresh: boolean): Promise<void> {
     await readTable(zip, 'routes.txt', (row) => {
       const id = row('route_id');
       const mode = config.modeOf({ id, type: row('route_type') });
+      if (config.includes && !config.includes(mode)) return;
       modes.set(id, mode);
       routes.set(id, {
         id,
@@ -211,7 +243,7 @@ async function build(config: FeedConfig, refresh: boolean): Promise<void> {
         routeId: row('route_id'),
         serviceId: row('service_id'),
         shapeId: row('shape_id'),
-        headsign: row('trip_headsign'),
+        headsign: config.headsign ? config.headsign(row('trip_headsign')) : row('trip_headsign'),
         direction: row('direction_id'),
       };
       if (!trip.shapeId || !routes.has(trip.routeId)) return;
@@ -361,7 +393,22 @@ async function build(config: FeedConfig, refresh: boolean): Promise<void> {
     const patternIndex = new Map<string, number>();
     const patterns: SchedulePattern[] = [];
     const scheduleTrips: GtfsSchedule['trips'] = [];
-    const fullPaths = new Map<string, ReturnType<typeof buildPath>>();
+    const fullPaths = new Map<string, Path>();
+    const projected = new Map<string, number>();
+    /** How far along a shape (0 to 1) a stop is, by its position, for feeds that do not say. */
+    const fractionAlong = (shapeId: string, stopId: string): number => {
+      const key = `${shapeId}|${stopId}`;
+      let fraction = projected.get(key);
+      if (fraction === undefined) {
+        const position = feedStops.get(stopId)?.position;
+        if (!position) throw new Error(`Stop ${stopId} on shape ${shapeId} has no position`);
+        let path = fullPaths.get(shapeId);
+        if (!path) fullPaths.set(shapeId, (path = buildPath(shapes.get(shapeId)!.full)));
+        fraction = path.length > 0 ? projectOnPath(path, position).distance / path.length : 0;
+        projected.set(key, fraction);
+      }
+      return fraction;
+    };
 
     for (const [tripId, list] of stopTimes) {
       const trip = trips.get(tripId)!;
@@ -371,19 +418,13 @@ async function build(config: FeedConfig, refresh: boolean): Promise<void> {
       const start = list[0]!.arrival;
 
       let previousFraction = 0;
-      const stops = list.map((stop, index): SchedulePattern['stops'][number] => {
+      const stops = list.map((stop): SchedulePattern['stops'][number] => {
         let fraction: number;
         if (stop.distance !== undefined && shape.feedLength > 0) {
           fraction = stop.distance / shape.feedLength;
-        } else if (index === 0) {
-          fraction = 0;
         } else {
           // No distance in the feed: find where the stop sits along the shape.
-          const position = feedStops.get(stop.stopId)?.position;
-          if (!position) throw new Error(`Stop ${stop.stopId} of trip ${tripId} has no position`);
-          let path = fullPaths.get(trip.shapeId);
-          if (!path) fullPaths.set(trip.shapeId, (path = buildPath(shape.full)));
-          fraction = projectOnPath(path, position).distance / path.length;
+          fraction = fractionAlong(trip.shapeId, stop.stopId);
         }
         // Rounding and feed quirks must never send a vehicle backwards.
         fraction = Math.min(1, Math.max(previousFraction, Math.round(fraction * 1e5) / 1e5));
@@ -534,18 +575,13 @@ async function build(config: FeedConfig, refresh: boolean): Promise<void> {
 
           const calls = (shapeCalls.get(shapeId) ?? []).sort((a, b) => a.sequence - b.sequence);
           const along: [string, number][] = [];
-          for (const [index, call] of calls.entries()) {
+          for (const call of calls) {
             const id = idOf.get(call.stopId);
             // Two platforms of one station in a row are a single stop here.
             if (id === undefined || along.at(-1)?.[0] === id) continue;
             let fraction: number;
             if (call.distance !== undefined && shape.feedLength > 0) fraction = call.distance / shape.feedLength;
-            else if (index === 0) fraction = 0;
-            else {
-              const position = feedStops.get(call.stopId)!.position;
-              const path = buildPath(shape.full);
-              fraction = projectOnPath(path, position).distance / path.length;
-            }
+            else fraction = fractionAlong(shapeId, call.stopId);
             along.push([id, Math.round(Math.min(1, Math.max(0, fraction)) * 1e4) / 1e4]);
           }
           network.shapeStops[shapeId] = along;
@@ -584,10 +620,17 @@ async function build(config: FeedConfig, refresh: boolean): Promise<void> {
       writeFileSync(path, JSON.stringify(value));
       log(`wrote ${name} (${(statSync(path).size / 1024).toFixed(0)} kB)`);
     };
-    write('realtime-network.json', networkFor(false));
-    write('trip-shapes.json', tripShapes);
-    write('scheduled-network.json', networkFor(true));
-    write('schedule.json', schedule);
+    // A feed need not have both live and timetable-placed routes.
+    const live = networkFor(false);
+    if (live.routes.length > 0) {
+      write('realtime-network.json', live);
+      write('trip-shapes.json', tripShapes);
+    }
+    const timetabled = networkFor(true);
+    if (timetabled.routes.length > 0) {
+      write('scheduled-network.json', timetabled);
+      write('schedule.json', schedule);
+    }
     log(`feed ${feedVersion || '(no version)'} is valid ${feedStart} to ${feedEnd}`);
   } finally {
     await zip.close();

@@ -268,6 +268,9 @@ input {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  /* Keeps room for the scrollbar always, so content does not narrow when a
+     section opens and makes the tab long enough to scroll. */
+  scrollbar-gutter: stable;
 }
 
 .tab-panel {
@@ -353,6 +356,7 @@ input {
 
 /* In Appearance, each toggle is a card of its own. */
 .tab-panel > .check {
+  margin-bottom: 16px;
   padding: 10px 12px;
   border: var(--line);
   background: var(--paper);
@@ -361,22 +365,6 @@ input {
   font-weight: 400;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-/* Under the toggle card in Appearance. While pausing, it shows as pressed in. */
-.pause-button {
-  display: block;
-  min-width: 120px;
-  min-height: 44px;
-  margin: 22px 0 10px;
-  background: var(--sand);
-  font-size: 13px;
-}
-
-.pause-button[aria-pressed='true'] {
-  background: var(--coral);
-  transform: translate(4px, 4px);
-  box-shadow: none;
 }
 
 /*
@@ -488,6 +476,21 @@ input {
 
 .section:nth-child(3n) {
   --band: var(--coral);
+}
+
+/* The cameras' section takes the colour of their markers on the map. */
+.section[data-kind='cameras'] {
+  --band: var(--camera);
+}
+
+/* Bike share is red. */
+.section[data-kind='bikes'] {
+  --band: var(--coral);
+}
+
+/* In light mode that colour is too deep for dark text. */
+:root[data-theme='light'] .section[data-kind='cameras'] .section-name {
+  color: #fffdf5;
 }
 
 .section-header {
@@ -983,6 +986,39 @@ input {
   font-weight: 400;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+/* A camera's latest image, in a frame that holds its place while it loads. */
+.popup-image {
+  display: grid;
+  place-items: center;
+  width: 256px;
+  height: 192px;
+  margin: 0 10px 6px;
+  padding: 0;
+  border: var(--line);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12px;
+}
+
+.popup > .popup-image {
+  padding: 0;
+}
+
+.popup-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.popup-image.unavailable img {
+  display: none;
+}
+
+.popup-image.unavailable::after {
+  content: 'No image available';
 }
 
 /* A title with nothing under it needs no gap or rule beneath. */

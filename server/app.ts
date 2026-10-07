@@ -1,30 +1,37 @@
 import { Hono } from 'hono';
 import { compress } from 'hono/compress';
 import { etag } from 'hono/etag';
-import type { SourceInfo, VehicleSnapshot } from '../shared/types';
+import type { CameraSnapshot, SourceInfo, VehicleSnapshot } from '../shared/types';
 import { cached } from './cache';
-import type { VehicleSource } from './sources/types';
+import type { CameraSource, Source, VehicleSource } from './sources/types';
 
 // Upstream is hit at most once per this fraction of a source's poll interval,
 // however many browsers are connected.
 const CACHE_TTL_FRACTION = 0.9;
 
-export function createApp(sources: VehicleSource[]): Hono {
+export function createApp(sources: Source[]): Hono {
   const app = new Hono();
   const byId = new Map(sources.map((source) => [source.info.id, source]));
 
-  const loaders = new Map(
-    sources.map((source) => [
-      source.info.id,
-      cached(source.info.pollIntervalMs * CACHE_TTL_FRACTION, async () => {
-        try {
-          return await source.fetchVehicles();
-        } catch (error) {
-          console.warn(`[${source.info.id}] upstream fetch failed:`, error);
-          throw error;
-        }
-      }),
-    ]),
+  /** Wraps a source's fetch so that upstream is asked sparingly and failures are logged. */
+  const loader = <T>(source: Source, load: () => Promise<T>) =>
+    cached(source.info.pollIntervalMs * CACHE_TTL_FRACTION, async () => {
+      try {
+        return await load();
+      } catch (error) {
+        console.warn(`[${source.info.id}] upstream fetch failed:`, error);
+        throw error;
+      }
+    });
+  const vehicleLoaders = new Map(
+    sources.flatMap((source) =>
+      source.info.kind === 'vehicles' ? [[source.info.id, loader(source, () => (source as VehicleSource).fetchVehicles())] as const] : [],
+    ),
+  );
+  const cameraLoaders = new Map(
+    sources.flatMap((source) =>
+      source.info.kind === 'cameras' ? [[source.info.id, loader(source, () => (source as CameraSource).fetchCameras())] as const] : [],
+    ),
   );
 
   app.use('/api/*', compress());
@@ -38,13 +45,16 @@ export function createApp(sources: VehicleSource[]): Hono {
   app.use('/api/sources/:id/routes', etag());
 
   app.get('/api/sources', (c) => {
-    const infos: SourceInfo[] = sources.map((source) => ({ ...source.info, hasRoutes: source.network !== undefined }));
+    const infos: SourceInfo[] = sources.map((source) => ({
+      ...source.info,
+      hasRoutes: 'network' in source && source.network !== undefined,
+    }));
     return c.json(infos);
   });
 
   app.get('/api/sources/:id/vehicles', async (c) => {
     const id = c.req.param('id');
-    const load = loaders.get(id);
+    const load = vehicleLoaders.get(id);
     if (!load) return c.json({ error: `Unknown source "${id}"` }, 404);
 
     try {
@@ -56,11 +66,25 @@ export function createApp(sources: VehicleSource[]): Hono {
     }
   });
 
+  app.get('/api/sources/:id/cameras', async (c) => {
+    const id = c.req.param('id');
+    const load = cameraLoaders.get(id);
+    if (!load) return c.json({ error: `Unknown source "${id}"` }, 404);
+
+    try {
+      const { value, fetchedAt, stale } = await load();
+      const snapshot: CameraSnapshot = { sourceId: id, fetchedAt, stale, cameras: value };
+      return c.json(snapshot);
+    } catch {
+      return c.json({ error: `Source "${id}" is unavailable` }, 502);
+    }
+  });
+
   app.get('/api/sources/:id/routes', (c) => {
     const id = c.req.param('id');
     const source = byId.get(id);
     if (!source) return c.json({ error: `Unknown source "${id}"` }, 404);
-    if (!source.network) return c.json({ error: `Source "${id}" has no route data` }, 404);
+    if (!('network' in source) || !source.network) return c.json({ error: `Source "${id}" has no route data` }, 404);
     c.header('Cache-Control', 'no-cache');
     return c.json(source.network);
   });

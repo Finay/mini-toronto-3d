@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { RouteNetwork, Vehicle, VehicleSnapshot } from '../shared/types';
 import { createApp } from './app';
-import type { VehicleSource } from './sources/types';
+import type { CameraSource, VehicleSource } from './sources/types';
 
 const bus: Vehicle = { id: '1', lat: 43.65, lon: -79.38, mode: 'bus' };
 
@@ -70,6 +70,19 @@ describe('API', () => {
 
     expect(first).toMatchObject({ sourceId: 'fake', stale: false, vehicles: [bus] });
     expect(fetchVehicles).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves cameras from a camera source, and only from one', async () => {
+    const camera = { id: '8001', name: 'York St', lat: 43.64, lon: -79.38, group: 'Arterial', imageUrl: 'https://example.test/8001.jpg' };
+    const cameras: CameraSource = {
+      info: { id: 'cams', name: 'Cameras', group: 'Test', kind: 'cameras', attributions: [], pollIntervalMs: 600_000, simulated: false },
+      fetchCameras: async () => [camera],
+    };
+    const app = createApp([cameras, fakeSource(async () => [bus])]);
+
+    expect(await (await app.request('/api/sources/cams/cameras')).json()).toMatchObject({ sourceId: 'cams', cameras: [camera] });
+    expect((await app.request('/api/sources/cams/vehicles')).status).toBe(404);
+    expect((await app.request('/api/sources/fake/cameras')).status).toBe(404);
   });
 
   it('returns 404 for an unknown source', async () => {

@@ -4,7 +4,7 @@ A real-time visualization of Toronto: live public transit vehicle positions, lan
 
 ## Status
 
-Working: live TTC buses and streetcars that follow their routes, TTC subway and light rail trains placed from the timetable, route lines, and 3D buildings on a pitched map. Not yet done: detailed vehicle models (vehicles are plain boxes), depth occlusion between vehicles and buildings, underground rendering for the subway, GO/UP Express, landmarks.
+Working: live TTC buses and streetcars that follow their routes; TTC subway and light rail trains and GO and UP Express trains placed from timetables; route lines, stops and stations; City traffic cameras with their latest image; 3D buildings; a themed flyout menu; hover, click-to-select and camera tracking. Not yet done: detailed vehicle models (vehicles are plain boxes), depth occlusion between vehicles and buildings, underground rendering for the subway, live GO and UP Express positions, GO buses, landmarks.
 
 ## Stack
 
@@ -26,7 +26,7 @@ TypeScript throughout. Client: Vite, MapLibre GL (OpenFreeMap "dark" basemap, no
 
 ## Commands
 
-- `npm run data` — download the TTC static GTFS if missing and regenerate `data/processed/` (about 5 seconds; add `-- --refresh` to download again). Needed once after cloning, and again whenever the TTC publishes a new feed
+- `npm run data` — download the TTC, GO and UP Express static GTFS if missing and regenerate `data/processed/` (about 5 seconds; add `-- --refresh` to download again). Needed once after cloning, and again whenever the TTC publishes a new feed
 - `npm run dev` — API server on :8787 and Vite on :5173 (open the Vite URL; it proxies `/api`)
 - `npm test` — unit tests
 - `npm run typecheck` — TypeScript check
@@ -44,12 +44,13 @@ The browser never talks to an agency directly (the TTC feed has no CORS header, 
 - `GET /api/sources` — list of `SourceInfo`
 - `GET /api/sources/:id/vehicles` — `VehicleSnapshot`
 - `GET /api/sources/:id/routes` — `RouteNetwork` (only for sources with `hasRoutes`)
+- `GET /api/sources/:id/cameras` — `CameraSnapshot` (only for sources of kind `cameras`)
 
 The client is source-agnostic: it lists sources, then for each one loads its routes, polls at its `pollIntervalMs`, draws line and vehicle layers, adds a panel row and shows its attributions. It contains no agency-specific code.
 
 Vehicle motion: `VehicleTracker` glides each vehicle from where it is drawn to its newest report, over the time between the two reports. When the vehicle's path is known (`Vehicle.shapeId`, or failing that the nearest shape of its route) it is snapped to the path and glides along it. Reports more than 50 m from any path, and glides that would be a long detour along the path, fall back to straight lines.
 
-Scheduled sources: where an agency has no live positions (TTC subway and Lines 5 and 6), `ScheduleSimulator` computes where each train should be from the timetable. These sources have `simulated: true` and the UI labels them as estimates. They show nothing once the feed's calendar has expired, so `npm run data -- --refresh` must be run when a new feed is published (the current TTC feed covers 2026-09-30 to 2026-10-31).
+Scheduled sources: where there are no live positions to use (TTC subway and Lines 5 and 6, and GO and UP Express trains), `ScheduleSimulator` computes where each train should be from the timetable. These sources have `simulated: true` and the UI labels them as estimates. They show nothing once the feed's calendar has expired, so `npm run data -- --refresh` must be run when a new feed is published (the current TTC feed covers 2026-09-30 to 2026-10-31, the GO feed 2026-10-05 to 2026-11-27).
 
 Without `data/processed/` the server still runs: live vehicles move in straight lines, with no route lines and no subway.
 
@@ -59,7 +60,9 @@ Stops: `RouteNetwork.stops` comes from the same build script. On-street stops ar
 
 Menu styling is a "vibrant block" look, chosen with the ui-ux-pro-max plugin's style database: flat colour blocks (toned down from that style's neons), 3 px outlines, hard offset shadows and the Russo One display face (bundled from `@fontsource/russo-one`, so no font service is contacted). Its tokens are scoped to the menu and popup in `src/style.css`: two neutrals (`--paper`, `--ink`) that swap between themes, five accents taken from the map (`--sand`, `--park`, `--coral`, `--water`, `--slate`), and `--on-color` for text on any of them, which is always dark. Keep to those tokens when adding menu controls. The map's popup and MapLibre's zoom and compass buttons use the same tokens (they are declared for `.flyout`, `.popup-anchor` and `.maplibregl-ctrl-group` together).
 
-Menu: `src/menu.ts` builds a flyout (closed by default, opened and closed by the pull tab on the left edge of the screen) with Appearance, Data and About tabs. It holds no map state: it reports changes through the callbacks passed to `createMenu`. The Appearance tab has the light mode toggle and a Pause button, which stops polling and freezes vehicle motion (`setPaused` and `vehicleClock` in `main.ts`; the tracker runs on that clock so vehicles resume from where they stopped). The Data tab has one collapsible section per `SourceInfo.group`, with a checkbox beside its name that shows or hides the whole group on the map, each source's status, "Show route lines" and "Show stops" toggles for that group, and a searchable list of its lines (`matchesLine`: whole line number, or the start of a word in the name), plus the placeholder sections in `PLANNED_SECTIONS`. Lines are grouped by kind (Subway, Bus…), each kind a dropdown that starts closed and opens by itself while a search has matches in it. Each line's colour circle is its on/off switch, solid when shown and faint with a prohibition sign when hidden, and each kind's heading has one for all its lines; nothing else in a row toggles. Hiding a line adds it to that source's `hiddenRoutes`, and `applyRouteFilter` in `main.ts` drops its vehicles, route line and any stops no visible line serves. Pointing at a row, or typing a search, picks lines out: the map fades everything else (`onLinesHighlighted`, `highlightedRoutes`, `DIMMED_OPACITY`). Pointing at a vehicle or stop on the map does the same for its route, or the routes serving the stop (`Hovered.routeIds`, checked first in `isDimmed`). `menu.test.ts` runs in happy-dom.
+Loading screen: the `#loader` element and all its styles are inline in `index.html`, so that it appears before the app's JavaScript and CSS arrive; a small inline script there reads the saved theme. It repeats the About tab's logo with spring animations. `hideLoader` in `main.ts` lifts it once the map has loaded and every vehicle source has answered once, after at least 1.4 s and at most 15 s.
+
+Menu: `src/menu.ts` builds a flyout (closed by default, opened and closed by the pull tab on the left edge of the screen) with Appearance, Data and About tabs. It holds no map state: it reports changes through the callbacks passed to `createMenu`. The Appearance tab has the light mode toggle and a Live toggle; unticking Live stops polling and freezes vehicle motion (`setPaused` and `vehicleClock` in `main.ts`; the tracker runs on that clock so vehicles resume from where they stopped). The Data tab has one collapsible section per `SourceInfo.group`, with a checkbox beside its name that shows or hides the whole group on the map, each source's status, "Show route lines" and "Show stops" toggles for that group, and a searchable list of its lines (`matchesLine`: whole line number, or the start of a word in the name), plus the placeholder sections in `PLANNED_SECTIONS`. Lines are grouped by kind (Subway, Bus…), each kind a dropdown that starts closed and opens by itself while a search has matches in it. Each line's colour circle is its on/off switch, solid when shown and faint with a prohibition sign when hidden, and each kind's heading has one for all its lines; nothing else in a row toggles. Hiding a line adds it to that source's `hiddenRoutes`, and `applyRouteFilter` in `main.ts` drops its vehicles, route line and any stops no visible line serves. Pointing at a row, or typing a search, picks lines out: the map fades everything else (`onLinesHighlighted`, `highlightedRoutes`, `DIMMED_OPACITY`). Pointing at a vehicle or stop on the map does the same for its route, or the routes serving the stop (`Hovered.routeIds`, checked first in `isDimmed`). `menu.test.ts` runs in happy-dom.
 
 Clicking a vehicle or stop pins the hover state (`pinned` in `main.ts`): the popup, glow and picked-out routes stay, and hover is ignored, until another object or empty map is clicked, Escape is pressed, or the object disappears or is hidden. Clicks are resolved with `overlay.pickObject` from the map's own click event. A clicked vehicle is also tracked: each frame `trackCamera` moves the map part of the way toward centring it in the area the menu leaves free (`Menu.coveredWidth`). The Appearance tab's tracking options (`TRACKING_MODES` in `menu.ts`, remembered in local storage) choose what else the camera does: nothing (Free), sit above and behind the vehicle or above and ahead of it by matching the map's bearing to the vehicle's, or circle it (Helicopter). The camera eases over to the vehicle and then locks on. The menu's width is given to the map as left padding (`syncMenuPadding`, and in `trackCamera` itself while tracking), which moves the map's centre and its perspective's vanishing point to the middle of the uncovered area; centring the vehicle by offset alone left it off the camera's line of sight in the turning modes. The stops still ahead of a clicked vehicle are ringed at 80% of the hover ring's strength (`upcomingStopHighlight`, `UPCOMING_STOP_STRENGTH`), using `RouteNetwork.shapeStops`: each shape's stops in order with their position along it, taken from one representative trip per shape. Dragging the map stops tracking but keeps the selection. Tracking pauses whenever a pointer is down or the wheel was just used, because `jumpTo` resets MapLibre's gesture handlers and would otherwise stop a drag or zoom from ever starting.
 
@@ -82,7 +85,7 @@ Themes: `src/themes.ts` holds every colour that differs between light and dark m
 5. For route lines and route-following, add the agency's static GTFS as a `FeedConfig` in `scripts/build-gtfs-data.ts`, load the generated files with `readProcessed`, set `network` on the source and pass live vehicles through `withShapes`.
 6. For an agency with a timetable but no live positions, use `createScheduledSource` (see `ttcRapidTransit` in `ttc.ts`).
 
-For data that is not vehicles (stations, alerts, landmarks): add a new `kind` to `SourceInfo` in `shared/types.ts`, a matching snapshot type and route in `server/app.ts`, and a renderer in the client keyed on `kind`.
+For data that is not vehicles: follow the camera kind as the worked example. It added `'cameras'` to `SourceInfo.kind` and a `Camera`/`CameraSnapshot` pair in `shared/types.ts`, a `CameraSource` in `server/sources/types.ts`, a loader map and endpoint in `server/app.ts`, and on the client a `CameraState` list, a marker layer (an `IconLayer` whose triangle is drawn on a canvas once per theme) and a branch in `showFor` for its popup. The menu needs nothing: any source gets a section from its `group`.
 
 ## Data sources
 
@@ -116,6 +119,15 @@ Covers all TTC modes; needed to resolve the route/trip/stop IDs in the real-time
 - Despite the "quarterly" label, each feed's calendar covers about one month
 - CKAN lists this dataset's licence as "not specified"; we treat it as covered by the portal-wide licence below
 
+### Traffic cameras (City of Toronto)
+
+Dataset page: https://open.toronto.ca/dataset/traffic-cameras/ — 336 cameras (253 arterial, the rest on Lake Shore, the Gardiner, the DVP and Allen Road), no key needed. `server/sources/torontoCameras.ts` serves the list; nothing else passes through the server.
+
+- List: `https://opendata.toronto.ca/transportation/tmc/rescucameraimages/Data/tmcearthcameras.json`, JSON wrapped in a `jsonTMCEarthCamerasCallback(...)` call, updated by the City within two minutes of a change
+- Image: `.../CameraImages/loc<number>.jpg`, 320 x 240, replaced in place every few minutes, `Cache-Control: max-age=60`. The browser loads it directly in the popup and adds `?t=<minute>` to get a fresh copy; an `<img>` needs no CORS header
+- The images do not say which way the camera is pointing. The dataset's `ComparisonImages` (old reference stills per compass direction) are for working that out by eye and are not used
+- Catalogue licence is "not specified"; treated as covered by the portal-wide licence below
+
 ### Licence (City of Toronto Open Data)
 
 Open Government Licence – Toronto v1.0: https://open.toronto.ca/open-data-licence/
@@ -126,6 +138,8 @@ Open Government Licence – Toronto v1.0: https://open.toronto.ca/open-data-lice
 - Applies to data from the Open Data portal. The real-time feeds at bustime.ttc.ca are not on the portal, so their terms are still unconfirmed
 
 ### Metrolinx static (GO Transit and UP Express GTFS)
+
+In use for GO and UP Express trains: `server/sources/metrolinx.ts` places them from the timetables, and the `go` and `up` feeds in `scripts/build-gtfs-data.ts` build their data. For GO only rail routes (route type 2) are kept; GO buses are not included. UP Express is a single route with five stations, and its feed runs to 2027-03-02. The feed has no shape distances, so stops are located along shapes by projection, and its shapes have a point only every few hundred metres, so they get the strongest smoothing. Services are listed by date in `calendar_dates.txt` only. The required legend below is the source's attribution, shown in the map's attribution control and the About tab.
 
 Developer page: https://www.gotransit.com/en/partner-with-us/software-developers — schedules only, no real-time data. Updated every few weeks; no key needed.
 

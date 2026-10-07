@@ -3,10 +3,263 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mini Toronto</title>
+    <title>Mini Toronto 3D</title>
+    <script>
+      // The loading screen shows before the app's code arrives, so the saved
+      // theme is read here; the app reads the same key (see src/themes.ts).
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('mini-toronto-theme') === 'light' ? 'light' : 'dark';
+      } catch {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    </script>
+    <style>
+      /*
+       * The loading screen. Its styles live here rather than in the app's
+       * stylesheet so that it is drawn at once, before any of the app loads.
+       * The colours and the logo repeat the menu's (see src/style.css).
+       */
+      .loader {
+        --paper: #232b40;
+        --ink: #e6ecfa;
+        --on-color: #1b2233;
+        --hard-shadow: #3d7fb5;
+        --sand: #e3c34f;
+        --park: #7cc596;
+        --coral: #f07a6e;
+        --water: #6bb6e6;
+        --slate: #9aa6cf;
+        --line: 4px solid var(--ink);
+        /* A spring: past the mark, back under it, then settling. */
+        --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Russo One', 'Arial Black', Impact, sans-serif;
+        text-transform: uppercase;
+        /* Leaving: a small dip, then up and away. */
+        transition: transform 620ms cubic-bezier(0.6, -0.35, 0.3, 1);
+      }
+
+      :root[data-theme='light'] .loader {
+        --paper: #f5f6f2;
+        --ink: #1b2233;
+        --hard-shadow: #1b2233;
+      }
+
+      .loader.done {
+        transform: translateY(-110%);
+      }
+
+      /* Moving hazard stripes along the top and bottom edges. */
+      .loader::before,
+      .loader::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        left: 0;
+        height: 22px;
+        background: repeating-linear-gradient(-45deg, var(--sand) 0 16px, var(--on-color) 16px 32px);
+        background-size: 45px 100%;
+        animation: loader-march 1.4s linear infinite;
+      }
+
+      .loader::before {
+        top: 0;
+        border-bottom: var(--line);
+      }
+
+      .loader::after {
+        bottom: 0;
+        border-top: var(--line);
+        animation-direction: reverse;
+      }
+
+      .loader-stack {
+        display: grid;
+        justify-items: center;
+        gap: clamp(28px, 6vh, 56px);
+        padding: 0 24px;
+      }
+
+      /* The logo: three blocks that spring in one after another, then bob. */
+      .loader-logo {
+        display: inline-grid;
+        justify-items: start;
+        margin: 0;
+        font-size: clamp(44px, 13vw, 124px);
+        font-weight: 400;
+        line-height: 1;
+      }
+
+      .loader-logo span {
+        border: var(--line);
+        color: var(--on-color);
+        transform: scale(0);
+        animation:
+          loader-pop 760ms var(--spring) var(--delay) both,
+          loader-bob 1.8s ease-in-out calc(var(--delay) + 800ms) infinite alternate;
+      }
+
+      .loader-mini {
+        --tilt: -4deg;
+        --delay: 80ms;
+        z-index: 1;
+        margin: 0 0 -0.16em 0.22em;
+        padding: 0.28em 0.55em 0.22em;
+        border-color: var(--ink);
+        background: var(--ink);
+        font-size: 0.38em;
+        letter-spacing: 0.14em;
+      }
+
+      .loader-logo span.loader-mini {
+        border-color: var(--ink);
+        color: var(--paper);
+      }
+
+      .loader-toronto {
+        --tilt: 0deg;
+        --delay: 240ms;
+        padding: 0.26em 0.3em 0.17em;
+        background: var(--sand);
+        box-shadow: 0.16em 0.16em 0 var(--hard-shadow);
+        letter-spacing: 0.02em;
+      }
+
+      .loader-3d {
+        --tilt: 6deg;
+        --delay: 440ms;
+        justify-self: end;
+        margin: -0.26em -0.2em 0 0;
+        padding: 0.16em 0.32em 0.1em;
+        background: var(--coral);
+        box-shadow:
+          0.13em 0.13em 0 var(--water),
+          0.26em 0.26em 0 var(--park);
+        font-size: 0.65em;
+      }
+
+      /* Five blocks that hop in turn, squashing as they land. */
+      .loader-dots {
+        display: flex;
+        gap: 12px;
+      }
+
+      .loader-dots i {
+        width: 18px;
+        height: 18px;
+        border: 3px solid var(--ink);
+        background: var(--sand);
+        transform-origin: 50% 100%;
+        animation: loader-hop 1.1s var(--spring) infinite;
+      }
+
+      .loader-dots i:nth-child(2) {
+        background: var(--park);
+        animation-delay: 110ms;
+      }
+
+      .loader-dots i:nth-child(3) {
+        background: var(--coral);
+        animation-delay: 220ms;
+      }
+
+      .loader-dots i:nth-child(4) {
+        background: var(--water);
+        animation-delay: 330ms;
+      }
+
+      .loader-dots i:nth-child(5) {
+        background: var(--slate);
+        animation-delay: 440ms;
+      }
+
+      .loader-text {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.16em;
+      }
+
+      @keyframes loader-pop {
+        from {
+          transform: scale(0) rotate(calc(var(--tilt) - 22deg));
+        }
+        to {
+          transform: scale(1) rotate(var(--tilt));
+        }
+      }
+
+      @keyframes loader-bob {
+        from {
+          transform: translateY(0) rotate(var(--tilt));
+        }
+        to {
+          transform: translateY(-0.07em) rotate(calc(var(--tilt) + 1.5deg));
+        }
+      }
+
+      @keyframes loader-hop {
+        0%,
+        55%,
+        100% {
+          transform: translateY(0) scale(1, 1);
+        }
+        25% {
+          transform: translateY(-22px) scale(0.88, 1.14);
+        }
+        42% {
+          transform: translateY(0) scale(1.2, 0.78);
+        }
+      }
+
+      @keyframes loader-march {
+        to {
+          background-position: 45px 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .loader,
+        .loader::before,
+        .loader::after,
+        .loader-logo span,
+        .loader-dots i {
+          animation: none;
+          transition: opacity 200ms ease;
+        }
+
+        .loader-logo span {
+          transform: rotate(var(--tilt));
+        }
+
+        .loader.done {
+          opacity: 0;
+          transform: none;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="map"></div>
+    <div id="loader" class="loader" role="status" aria-label="Loading Mini Toronto 3D">
+      <div class="loader-stack">
+        <p class="loader-logo" aria-hidden="true">
+          <span class="loader-mini">Mini</span>
+          <span class="loader-toronto">Toronto</span>
+          <span class="loader-3d">3D</span>
+        </p>
+        <div class="loader-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <p class="loader-text">Loading the city</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

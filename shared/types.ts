@@ -37,8 +37,8 @@ export interface SourceInfo {
   name: string;
   /** The agency or provider, used to group sources in the menu, e.g. "TTC". */
   group: string;
-  /** What the source provides. Add new kinds here as other data streams arrive. */
-  kind: 'vehicles';
+  /** What the source provides, which decides the endpoint its data is served from. */
+  kind: 'vehicles' | 'cameras';
   /** Shown on the map; most data licences require them. */
   attributions: Attribution[];
   /** How often the client should ask for fresh data. */
@@ -56,6 +56,28 @@ export interface VehicleSnapshot {
   /** True when upstream failed and this is the last good response. */
   stale: boolean;
   vehicles: Vehicle[];
+}
+
+/** A fixed camera whose still image is replaced in place every few minutes. */
+export interface Camera {
+  /** Unique within its source. */
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  /** The road or kind of road it watches, e.g. "Gardiner" or "Arterial". */
+  group: string;
+  /** Always the latest image; loaded by the browser directly. */
+  imageUrl: string;
+}
+
+export interface CameraSnapshot {
+  sourceId: string;
+  /** Epoch milliseconds at which the server fetched this from upstream. */
+  fetchedAt: number;
+  /** True when upstream failed and this is the last good response. */
+  stale: boolean;
+  cameras: Camera[];
 }
 
 export interface Route {

@@ -48,13 +48,10 @@ export interface Menu {
 
 // Data sources that are planned but not built, so the Data tab shows what is
 // missing as well as what is there.
-const PLANNED_SECTIONS = [
-  {
-    name: 'GO Transit and UP Express',
-    note: 'Not connected yet. Timetables are available; live positions need a Metrolinx API key.',
-  },
-  { name: 'Bike Share Toronto', note: 'Not connected yet.' },
-];
+const PLANNED_SECTIONS = [{ name: 'Bike Share Toronto', kind: 'bikes', note: 'Not connected yet.' }];
+
+// Where the About tab sends people who want to get in touch.
+const CONTACT_EMAIL = 'kian.benner@gmail.com';
 
 // The width of the coloured bars on the menu's outer edge (`--spine` in style.css).
 const SPINE_PX = 16;
@@ -353,20 +350,11 @@ export function createMenu(options: MenuOptions): Menu {
 
   // Appearance
   const appearance = addTab('Appearance');
-  // Pausing stops the map fetching and animating, for a slow machine or a metered connection.
-  const pause = element('button', 'text-button pause-button', 'Pause');
-  pause.setAttribute('aria-pressed', 'false');
-  const pauseNote = element('p', 'note', 'Stops live updates and vehicle movement to lighten the load.');
-  pause.addEventListener('click', () => {
-    const paused = pause.getAttribute('aria-pressed') !== 'true';
-    pause.setAttribute('aria-pressed', String(paused));
-    pause.textContent = paused ? 'Resume' : 'Pause';
-    pauseNote.textContent = paused
-      ? 'Paused: the map is not updating. Vehicles are where they were when you paused.'
-      : 'Stops live updates and vehicle movement to lighten the load.';
-    options.onPaused(paused);
-  });
-  appearance.append(checkbox('Light mode', options.lightMode, options.onLightMode).row, pause, pauseNote);
+  // Unticking Live pauses the map: nothing is fetched and vehicles stay
+  // put, for a slow machine or a metered connection.
+  const live = checkbox('Live', true, (checked) => options.onPaused(!checked));
+  live.row.title = 'Live updates and vehicle movement. Untick to pause them and lighten the load.';
+  appearance.append(checkbox('Light mode', options.lightMode, options.onLightMode).row, live.row);
 
   // Tracking options: how the camera follows a clicked vehicle.
   const tracking = element('div', 'option-group');
@@ -422,6 +410,9 @@ export function createMenu(options: MenuOptions): Menu {
     visible.input.setAttribute('aria-label', `Show ${group} on the map`);
     visible.row.title = `Show ${group} on the map`;
     const section = addSection(group, index === 0, visible.row);
+    // A section for one kind of thing can be styled to match that thing's markers.
+    const kinds = new Set(options.sources.filter((source) => source.group === group).map((source) => source.kind));
+    if (kinds.size === 1) section.parentElement!.dataset.kind = [...kinds][0];
 
     for (const source of options.sources.filter((candidate) => candidate.group === group)) {
       const status = element('span', 'status', 'Loading…');
@@ -445,7 +436,9 @@ export function createMenu(options: MenuOptions): Menu {
     }
   });
   for (const planned of PLANNED_SECTIONS) {
-    addSection(planned.name, false, element('span', 'badge', 'Planned')).append(element('p', 'note', planned.note));
+    const section = addSection(planned.name, false, element('span', 'badge', 'Planned'));
+    section.append(element('p', 'note', planned.note));
+    section.parentElement!.dataset.kind = planned.kind;
   }
 
   // About
@@ -471,8 +464,13 @@ export function createMenu(options: MenuOptions): Menu {
     element(
       'p',
       undefined,
-      'Buses and streetcars are positions reported by the vehicles, refreshed about every 30 seconds. ' +
-        'Subway and light rail trains are estimates worked out from the timetable, not live positions.',
+      'TTC buses and streetcars are positions reported by the vehicles, refreshed about every 30 seconds. ' +
+        'Subway, light rail, GO and UP Express trains are estimates worked out from the timetable, not live positions.',
+    ),
+    element(
+      'p',
+      undefined,
+      'Traffic camera images are stills from the City of Toronto, replaced every few minutes.',
     ),
     element('h2', undefined, 'Data'),
   );
@@ -488,6 +486,10 @@ export function createMenu(options: MenuOptions): Menu {
   const basemap = element('li');
   basemap.append('Map: OpenFreeMap, OpenMapTiles and OpenStreetMap contributors');
   credits.append(basemap);
+  const contact = element('p');
+  const email = element('a', undefined, CONTACT_EMAIL);
+  email.href = `mailto:${CONTACT_EMAIL}`;
+  contact.append('Questions, corrections or ideas: ', email);
   about.append(
     credits,
     element(
@@ -495,6 +497,8 @@ export function createMenu(options: MenuOptions): Menu {
       'note',
       'An independent project, not affiliated with or endorsed by the TTC, the City of Toronto or Metrolinx.',
     ),
+    element('h2', undefined, 'Contact'),
+    contact,
   );
 
   content.append(tabList, body);
