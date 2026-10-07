@@ -1,0 +1,76 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #0c0e12;
+  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: #e8eaed;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+}
+
+#panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  max-width: min(300px, calc(100vw - 80px));
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  background: rgb(18 20 26 / 0.86);
+  backdrop-filter: blur(6px);
+}
+
+#panel h1 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+#panel label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+#panel input {
+  margin: 0;
+}
+
+.source {
+  margin-bottom: 10px;
+}
+
+.status {
+  margin: 2px 0 0 19px;
+  color: #9aa0a6;
+  font-size: 12px;
+}
+
+.status.warning {
+  color: #f2b84b;
+}
+
+.legend {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 8px;
+  color: #bdc1c6;
+  text-transform: capitalize;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}

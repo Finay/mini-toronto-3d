@@ -1,0 +1,18 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Raw downloaded datasets (large; re-fetchable)
+data/raw/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Claude Code personal files
+CLAUDE.local.md
+.claude/settings.local.json
+
+# OS
+.DS_Store
